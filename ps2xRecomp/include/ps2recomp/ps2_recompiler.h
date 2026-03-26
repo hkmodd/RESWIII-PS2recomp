@@ -28,6 +28,7 @@ namespace ps2recomp
         ~PS2Recompiler();
 
         bool initialize();
+        void setUseIR(bool value) { m_useIR = value; }
         bool recompile();
         void generateOutput();
 
@@ -48,6 +49,7 @@ namespace ps2recomp
         std::unique_ptr<R5900Decoder> m_decoder;
         std::unique_ptr<CodeGenerator> m_codeGenerator;
         RecompilerConfig m_config;
+        bool m_useIR = false;
 
         std::vector<Function> m_functions;
         std::vector<Symbol> m_symbols;

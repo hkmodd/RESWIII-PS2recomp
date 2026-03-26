@@ -82,6 +82,8 @@ endif()
 
 file(GLOB_RECURSE PS2RECOMP_LIB_SOURCES CONFIGURE_DEPENDS
     src/lib/*.cpp
+    src/frontend/*.cpp
+    src/backend/*.cpp
 )
 
 file(GLOB_RECURSE PS2RECOMP_HEADERS CONFIGURE_DEPENDS
@@ -116,6 +118,11 @@ PUBLIC
     rabbitizer
 )
 
+# httplib.h (used by ghidra_bridge) requires WinSock on Windows
+if(WIN32)
+    target_link_libraries(ps2_recomp_lib PUBLIC ws2_32)
+endif()
+
 file(GLOB_RECURSE PS2RECOMP_EXE_SOURCES CONFIGURE_DEPENDS
     src/runner/*.cpp
 )
@@ -136,3 +143,8 @@ install(TARGETS ps2_recomp ps2_recomp_lib
 install(DIRECTORY include/
     DESTINATION include
 )
+
+# ── Test executables ──────────────────────────────────────────────────────────
+add_executable(lifter_test tests/lifter_test.cpp)
+target_link_libraries(lifter_test PRIVATE ps2_recomp_lib)
+

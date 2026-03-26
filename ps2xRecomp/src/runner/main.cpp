@@ -19,11 +19,26 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    std::string configPath = argv[1];
+    std::string configPath;
+    bool useIR = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--use-ir") {
+            useIR = true;
+        } else if (configPath.empty()) {
+            configPath = arg;
+        }
+    }
+
+    if (configPath.empty()) {
+        printUsage();
+        return 1;
+    }
 
     try
     {
         PS2Recompiler recompiler(configPath);
+        recompiler.setUseIR(useIR);
 
         if (!recompiler.initialize())
         {

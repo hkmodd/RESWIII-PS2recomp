@@ -4,6 +4,9 @@
 #include "ps2recomp/elf_parser.h"
 #include "ps2recomp/r5900_decoder.h"
 #include "ps2_runtime_calls.h"
+#include "ps2recomp/ghidra_bridge.h"
+#include "ps2recomp/ir_lifter.h"
+#include "../backend/cpp_emitter.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -896,6 +899,12 @@ namespace ps2recomp
     {
         try
         {
+            if (m_useIR) {
+                std::cout << "Using IR lifting pipeline (GhidraBridge -> IRLifter -> CppEmitter)\n";
+                std::cout << "Skeleton implementation... exiting.\n";
+                return true;
+            }
+
             std::cout << "Recompiling " << m_functions.size() << " functions..." << std::endl;
 
             size_t processedCount = 0;
