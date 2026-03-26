@@ -212,6 +212,11 @@ private:
     void liftMTHI  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
     void liftMTLO  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
 
+    // MMI (Multimedia) Base
+    void liftPADDB (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPEXTUW(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPCPYLD(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+
     // Memory loads
     void liftLB    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
     void liftLBU   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);

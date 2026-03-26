@@ -148,3 +148,7 @@ install(DIRECTORY include/
 add_executable(lifter_test tests/lifter_test.cpp)
 target_link_libraries(lifter_test PRIVATE ps2_recomp_lib)
 
+# Temporary target for C++ output validation
+add_library(cpp_compile_test STATIC tests/cpp_compile_test.cpp)
+target_include_directories(cpp_compile_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../ps2xRuntime/include)
+target_link_libraries(cpp_compile_test PRIVATE ps2_recomp_lib)

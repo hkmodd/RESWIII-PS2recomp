@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <unordered_map>
 #include "ps2recomp/ir.h"
 
 namespace ps2recomp {
@@ -30,6 +31,8 @@ private:
     std::string getRegName(const ir::IRReg& reg) const;
     std::string getValueName(ir::ValueId id) const;
     std::string getCType(ir::IRType type) const;
+
+    std::unordered_map<ir::ValueId, ir::IRType> valueTypes_;
 };
 
 } // namespace ps2recomp

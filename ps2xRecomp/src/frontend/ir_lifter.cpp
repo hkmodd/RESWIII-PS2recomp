@@ -27,6 +27,11 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["subu"]   = &IRLifter::liftSUBU;
     dispatchTable_["dadd"]   = &IRLifter::liftDADD;
     dispatchTable_["daddu"]  = &IRLifter::liftDADDU;
+    // Pseudo-instruction aliases
+    dispatchTable_["move"]   = &IRLifter::liftADDU;
+    dispatchTable_["clear"]  = &IRLifter::liftADDU;
+    dispatchTable_["li"]     = &IRLifter::liftADDIU;
+    dispatchTable_["b"]      = &IRLifter::liftBEQ;
     // Integer ALU — I-type
     dispatchTable_["addi"]   = &IRLifter::liftADDI;
     dispatchTable_["addiu"]  = &IRLifter::liftADDIU;
@@ -54,6 +59,10 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["sltiu"]  = &IRLifter::liftSLTIU;
     // LUI
     dispatchTable_["lui"]    = &IRLifter::liftLUI;
+    // MMI Base
+    dispatchTable_["paddb"]  = &IRLifter::liftPADDB;
+    dispatchTable_["pextuw"] = &IRLifter::liftPEXTUW;
+    dispatchTable_["pcpyld"] = &IRLifter::liftPCPYLD;
     // Multiply / Divide
     dispatchTable_["mult"]   = &IRLifter::liftMULT;
     dispatchTable_["multu"]  = &IRLifter::liftMULTU;

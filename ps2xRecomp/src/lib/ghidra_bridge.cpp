@@ -46,9 +46,11 @@ uint32_t GhidraBridge::parseHexAddr(const std::string& s) {
 }
 
 uint32_t GhidraBridge::parseHexBytes(const std::string& hexStr) {
-    // "280C0070" → 0x280C0070 (big-endian as stored in the hex string)
+    // Ghidra yields "0800e003" for `jr ra` (little-endian bytes in memory).
+    // strtoul gives 0x0800E003. We byteswap it to get the correct 32-bit word 0x03E00008.
     if (hexStr.size() != 8) return 0;
-    return static_cast<uint32_t>(std::strtoul(hexStr.c_str(), nullptr, 16));
+    uint32_t raw = static_cast<uint32_t>(std::strtoul(hexStr.c_str(), nullptr, 16));
+    return ((raw >> 24) & 0xFF) | ((raw >> 8) & 0xFF00) | ((raw << 8) & 0xFF0000) | ((raw << 24) & 0xFF000000);
 }
 
 std::vector<uint8_t> GhidraBridge::decodeHexString(const std::string& hex) {

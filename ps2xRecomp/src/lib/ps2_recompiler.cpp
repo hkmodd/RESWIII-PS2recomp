@@ -901,7 +901,56 @@ namespace ps2recomp
         {
             if (m_useIR) {
                 std::cout << "Using IR lifting pipeline (GhidraBridge -> IRLifter -> CppEmitter)\n";
-                std::cout << "Skeleton implementation... exiting.\n";
+                GhidraBridge bridge("localhost", 8192);
+                if (!bridge.connect()) {
+                    std::cerr << "[ERROR] Failed to connect to GhidraBridge on localhost:8192. Ensure Ghidra is running with the GhydraMCP server.\n";
+                    return false;
+                }
+
+                auto ghidraFuncs = bridge.fetchAllFunctions(true, [](uint32_t c, uint32_t t) {
+                    if (c % 100 == 0 || c == t) {
+                        std::cout << "\rFetching functions from Ghidra... " << c << "/" << t << std::flush;
+                    }
+                });
+                std::cout << "\nFound " << ghidraFuncs.size() << " functions in Ghidra.\n";
+
+                size_t processedCount = 0;
+                size_t failedCount = 0;
+
+                for (auto& gf : ghidraFuncs) {
+                    try {
+                        auto disasm = bridge.fetchDisassembly(gf.startAddr);
+                        if (disasm.empty()) {
+                            failedCount++;
+                            continue;
+                        }
+
+                        IRLifter lifter;
+                        auto irFunc = lifter.liftFunction(gf, disasm);
+                        if (gf.isThunk) {
+                            irFunc.name += "_thunk";
+                        }
+                        
+                        CppEmitter emitter;
+                        std::string code = emitter.emitFunction(irFunc);
+                        
+                        if (gf.isThunk) {
+                            code = "// THUNK\n" + code;
+                        }
+                        
+                        m_irGeneratedFunctions[gf.startAddr] = code;
+
+                        processedCount++;
+                    } catch (const std::exception& e) {
+                        std::cerr << "Failed to lift function 0x" << std::hex << gf.startAddr << std::dec << ": " << e.what() << "\n";
+                        failedCount++;
+                    }
+                }
+                
+                std::cout << "Successfully ran IR pipeline for " << processedCount << " functions.\n";
+                if (failedCount > 0) {
+                    std::cerr << "Failed to lift " << failedCount << " functions.\n";
+                }
                 return true;
             }
 
@@ -967,6 +1016,32 @@ namespace ps2recomp
     {
         try
         {
+            if (m_useIR) {
+                std::stringstream combinedOutput;
+                combinedOutput << "#include \"ps2_recompiled_functions.h\"\n\n";
+                combinedOutput << "#include \"ps2_runtime_macros.h\"\n";
+                combinedOutput << "#include \"ps2_runtime.h\"\n";
+                combinedOutput << "#include \"ps2_recompiled_stubs.h\"\n";
+                combinedOutput << "#include \"ps2_syscalls.h\"\n";
+                combinedOutput << "#include \"ps2_stubs.h\"\n";
+                combinedOutput << "#include <emmintrin.h>\n";
+                combinedOutput << "#ifdef _DEBUG\n";
+                combinedOutput << "#include \"ps2_log.h\"\n";
+                combinedOutput << "#endif\n\n";
+
+                for (const auto& [addr, code] : m_irGeneratedFunctions) {
+                    combinedOutput << code << "\n\n";
+                }
+
+                fs::path outputPath = fs::path(m_config.outputPath) / "ps2_recompiled_functions.cpp";
+                if (!writeToFile(outputPath.string(), combinedOutput.str()))
+                {
+                    throw std::runtime_error("Failed to write combined output for IR pipeline: " + outputPath.string());
+                }
+                std::cout << "Wrote IR recompiled combined output to: " << outputPath << std::endl;
+                return;
+            }
+
             m_functionRenames.clear();
 
             auto makeName = [&](const Function &function) -> std::string

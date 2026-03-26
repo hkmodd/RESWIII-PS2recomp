@@ -171,15 +171,32 @@ int main(int argc, char* argv[]) {
     // Print the full IR tree
     printIRFunction(irFunc);
 
-    // Sprint 3 - Phase 2: Smoke test CppEmitter
+    // Sprint 3 - Phase 4: Smoke test CppEmitter output compile
     printf("[LIFTER TEST] Emitting C++ Code...\n");
     CppEmitter emitter;
     std::string cppCode = emitter.emitFunction(irFunc);
     
-    printf("========================================\n");
-    printf("C++ Output:\n");
-    printf("========================================\n");
-    printf("%s\n", cppCode.c_str());
+    std::string outPath = "tests/cpp_compile_test.cpp";
+    FILE* f = fopen(outPath.c_str(), "w");
+    if (!f) {
+        // Fallback if running from a different workdir
+        outPath = "cpp_compile_test.cpp";
+        f = fopen(outPath.c_str(), "w");
+    }
+    
+    if (f) {
+        fprintf(f, "#include <stdint.h>\n");
+        fprintf(f, "#include <stdbool.h>\n");
+        fprintf(f, "#include \"ps2_runtime.h\"\n");
+        fprintf(f, "#include \"ps2_runtime_macros.h\"\n\n");
+        fprintf(f, "%s\n", cppCode.c_str());
+        fclose(f);
+        printf("========================================\n");
+        printf("C++ Output saved to %s\n", outPath.c_str());
+        printf("========================================\n");
+    } else {
+        printf("FAILED to open cpp_compile_test.cpp for writing.\n");
+    }
 
     printf("[LIFTER TEST] Done.\n");
     return 0;

@@ -4,6 +4,8 @@
 // ============================================================================
 
 #include "cpp_emitter.h"
+#include <bit>
+#include <cmath>
 
 namespace ps2recomp {
 
@@ -16,6 +18,10 @@ std::string CppEmitter::emitFunction(const IRFunction& func) {
     std::ostringstream out;
 
     out << "// Emitted C++ backend for " << func.name << "\n";
+    out << "static inline __m128i to_m128i(__m128i v) { return v; }\n";
+    out << "static inline __m128i to_m128i(uint64_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
+    out << "static inline __m128i to_m128i(uint32_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
+    out << "static inline __m128i to_m128i(int32_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
     out << "extern \"C\" void " << func.name << "(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {\n";
     out << "    // TODO: Define context and basic arguments\n\n";
     // Setup block dispatch for indirect intra-function jumps or just basic blocks if needed
@@ -46,6 +52,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
     out << "    ";
     
     if (inst.hasResult()) {
+        valueTypes_[inst.result.id] = inst.result.type;
         out << getCType(inst.result.type) << " " << getValueName(inst.result.id) << " = ";
     }
 
@@ -55,14 +62,31 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             return; // We don't want the generic end-of-instruction semicolon for comments
         case IROp::IR_REG_READ:
             if (inst.reg.kind == IRRegKind::GPR) {
-                out << (inst.result.type == IRType::I64 ? "GPR_U64(ctx, " : "GPR_U32(ctx, ") << (int)inst.reg.index << ")";
+                if (inst.result.type == IRType::I128) {
+                    out << "GET_GPR_VEC(ctx, " << (int)inst.reg.index << ")";
+                } else if (inst.result.type == IRType::I64) {
+                    out << "GPR_U64(ctx, " << (int)inst.reg.index << ")";
+                } else {
+                    out << "GPR_U32(ctx, " << (int)inst.reg.index << ")";
+                }
             } else {
                 out << "ctx->" << getRegName(inst.reg);
             }
             break;
         case IROp::IR_REG_WRITE:
             if (inst.reg.kind == IRRegKind::GPR) {
-                out << "SET_GPR_U64(ctx, " << (int)inst.reg.index << ", " << getValueName(inst.operands[0]) << ")";
+                ir::IRType opType = ir::IRType::I32;
+                if (!inst.operands.empty()) {
+                    auto it = valueTypes_.find(inst.operands[0]);
+                    if (it != valueTypes_.end()) opType = it->second;
+                }
+                if (opType == ir::IRType::I128) {
+                    out << "SET_GPR_VEC(ctx, " << (int)inst.reg.index << ", " << getValueName(inst.operands[0]) << ")";
+                } else if (opType == ir::IRType::I64) {
+                    out << "SET_GPR_U64(ctx, " << (int)inst.reg.index << ", " << getValueName(inst.operands[0]) << ")";
+                } else {
+                    out << "SET_GPR_U32(ctx, " << (int)inst.reg.index << ", " << getValueName(inst.operands[0]) << ")";
+                }
             } else {
                 out << "ctx->" << getRegName(inst.reg) << " = " << getValueName(inst.operands[0]);
             }
@@ -125,7 +149,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             }
             break;
         case IROp::IR_RETURN:
-            out << "ctx->pc = " << getValueName(inst.operands[0]) << "; return";
+            out << "return";
             break;
         case IROp::IR_CONST:
             if (inst.result.type == IRType::F32) {
@@ -135,7 +159,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             }
             break;
         case IROp::IR_LOAD: {
-            std::string macroPrefix = "MEM_READ";
+            std::string macroPrefix = "READ";
             switch(inst.memType) {
                 case IRType::I8: macroPrefix += "8"; break;
                 case IRType::I16: macroPrefix += "16"; break;
@@ -145,7 +169,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
                 case IRType::F32: macroPrefix += "32"; break;
                 default: macroPrefix += "32"; break;
             }
-            std::string readExpr = macroPrefix + "(rdram, " + getValueName(inst.operands[0]) + ")";
+            std::string readExpr = macroPrefix + "(" + getValueName(inst.operands[0]) + ")";
             if (inst.memSigned) {
                 if (inst.memType == IRType::I8) readExpr = "(int32_t)(int8_t)" + readExpr;
                 else if (inst.memType == IRType::I16) readExpr = "(int32_t)(int16_t)" + readExpr;
@@ -156,7 +180,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             break;
         }
         case IROp::IR_STORE: {
-            std::string macroPrefix = "MEM_WRITE";
+            std::string macroPrefix = "WRITE";
             switch(inst.memType) {
                 case IRType::I8: macroPrefix += "8"; break;
                 case IRType::I16: macroPrefix += "16"; break;
@@ -166,11 +190,72 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
                 case IRType::F32: macroPrefix += "32"; break;
                 default: macroPrefix += "32"; break;
             }
-            out << macroPrefix << "(rdram, " << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            std::string valStr = getValueName(inst.operands[1]);
+            if (inst.memType == IRType::I128) {
+                valStr = "to_m128i(" + valStr + ")";
+            }
+            out << macroPrefix << "(" << getValueName(inst.operands[0]) << ", " << valStr << ")";
             break;
         }
         case IROp::IR_NOP:
             out << "// NOP";
+            break;
+        case IROp::IR_FADD:
+            out << getValueName(inst.operands[0]) << " + " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_FSUB:
+            out << getValueName(inst.operands[0]) << " - " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_FMUL:
+            out << getValueName(inst.operands[0]) << " * " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_FDIV:
+            out << getValueName(inst.operands[0]) << " / " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_FABS:
+            out << "std::abs(" << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_FNEG:
+            out << "-(" << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_FMOV:
+            out << getValueName(inst.operands[0]);
+            break;
+        case IROp::IR_FSQRT:
+            out << "std::sqrt(" << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_SITOFP:
+            out << "(float)((int32_t)" << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_FPTOSI:
+            out << "(int32_t)(" << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_BITCAST:
+            if (inst.result.type == IRType::F32) {
+                out << "std::bit_cast<float>(" << getValueName(inst.operands[0]) << ")";
+            } else {
+                out << "std::bit_cast<uint32_t>(" << getValueName(inst.operands[0]) << ")";
+            }
+            break;
+        case IROp::IR_FCMP_EQ:
+            out << "(" << getValueName(inst.operands[0]) << " == " << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            break;
+        case IROp::IR_FCMP_LT:
+            out << "(" << getValueName(inst.operands[0]) << " < " << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            break;
+        case IROp::IR_FCMP_LE:
+            out << "(" << getValueName(inst.operands[0]) << " <= " << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            break;
+        case IROp::IR_PADDB:
+            out << "_mm_add_epi8(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_PEXTUW:
+            // Placeholder for PEXTUW macro binding
+            out << "MMI_PEXTUW(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_PCPYLD:
+            // Placeholder for PCPYLD macro binding
+            out << "MMI_PCPYLD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
             break;
         default:
             out << "// TODO: Unimplemented instruction (" << getOpString(inst.op) << ")";
@@ -187,7 +272,7 @@ std::string CppEmitter::getOpString(IROp op) const {
 std::string CppEmitter::getRegName(const IRReg& reg) const {
     switch (reg.kind) {
         case IRRegKind::GPR: return "GPR[" + std::to_string(reg.index) + "]";
-        case IRRegKind::FPR: return "FPR[" + std::to_string(reg.index) + "]";
+        case IRRegKind::FPR: return "f[" + std::to_string(reg.index) + "]";
         default: return "UNKNOWN_REG";
     }
 }
@@ -203,6 +288,7 @@ std::string CppEmitter::getCType(IRType type) const {
         case IRType::I16: return "uint16_t";
         case IRType::I32: return "uint32_t";
         case IRType::I64: return "uint64_t";
+        case IRType::I128: return "__m128i";
         case IRType::F32: return "float";
         default: return "uint32_t";
     }
