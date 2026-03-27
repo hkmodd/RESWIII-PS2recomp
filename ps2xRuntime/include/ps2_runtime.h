@@ -126,6 +126,8 @@ struct alignas(16) R5900Context
     // FPU registers (COP1)
     float f[32];
     uint32_t fcr31; // Control/status register
+    float fpu_acc;  // FPU Accumulator
+
 
     R5900Context()
     {

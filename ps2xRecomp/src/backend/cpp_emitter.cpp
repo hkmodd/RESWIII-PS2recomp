@@ -352,9 +352,23 @@ std::string CppEmitter::getOpString(IROp op) const {
 
 std::string CppEmitter::getRegName(const IRReg& reg) const {
     switch (reg.kind) {
-        case IRRegKind::GPR: return "GPR[" + std::to_string(reg.index) + "]";
+        case IRRegKind::GPR: return "r[" + std::to_string(reg.index) + "]";
         case IRRegKind::FPR: return "f[" + std::to_string(reg.index) + "]";
-        default: return "UNKNOWN_REG";
+        case IRRegKind::HI:  return reg.index == 0 ? "hi" : "hi1";
+        case IRRegKind::LO:  return reg.index == 0 ? "lo" : "lo1";
+        case IRRegKind::SA:  return "sa";
+        case IRRegKind::FPU_CC: return "fcr31";
+        case IRRegKind::FPU_ACC: return "fpu_acc"; // R5900Context needs to handle this? Or maybe we can just say fpu_acc, let's fall back to f[0] if it's missing but ideally we don't hit this yet
+        case IRRegKind::COP0: { // Standard cop0 mapped fields
+            switch (reg.index) {
+                case 12: return "cop0_status";
+                case 13: return "cop0_cause";
+                case 14: return "cop0_epc";
+                default: return "cop0_index"; // Dummy fallback
+            }
+        }
+        case IRRegKind::PC: return "pc";
+        default: return "UNKNOWN_REG_" + std::to_string(static_cast<int>(reg.kind));
     }
 }
 
