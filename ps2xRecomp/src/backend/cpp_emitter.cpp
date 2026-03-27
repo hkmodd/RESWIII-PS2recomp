@@ -18,10 +18,6 @@ std::string CppEmitter::emitFunction(const IRFunction& func) {
     std::ostringstream out;
 
     out << "// Emitted C++ backend for " << func.name << "\n";
-    out << "static inline __m128i to_m128i(__m128i v) { return v; }\n";
-    out << "static inline __m128i to_m128i(uint64_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
-    out << "static inline __m128i to_m128i(uint32_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
-    out << "static inline __m128i to_m128i(int32_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
     out << "extern \"C\" void " << func.name << "(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {\n";
     out << "    // TODO: Define context and basic arguments\n\n";
     // Setup block dispatch for indirect intra-function jumps or just basic blocks if needed
@@ -41,10 +37,9 @@ std::string CppEmitter::emitFunction(const IRFunction& func) {
 }
 
 void CppEmitter::emitBasicBlockHeader(std::ostringstream& out, const IRBasicBlock& bb) {
+    out << "bb_" << bb.index << ":\n";
     if (!bb.label.empty()) {
-        out << bb.label << ":\n";
-    } else {
-        out << "bb_" << bb.index << "_0x" << std::hex << bb.mipsStartAddr << std::dec << ":\n";
+        out << "    // " << bb.label << "\n";
     }
 }
 
@@ -150,6 +145,22 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "std::bit_cast<" << t << ">(" << getValueName(inst.operands[0]) << ")";
             break;
         }
+        case IROp::IR_ZEXT:
+            out << "(" << getCType(inst.result.type) << ")" << getValueName(inst.operands[0]);
+            break;
+        case IROp::IR_SEXT:
+            // Need to sign extend from the operand's type
+            {
+                std::string opType = "int32_t";
+                auto it = valueTypes_.find(inst.operands[0]);
+                if (it != valueTypes_.end()) {
+                    if (it->second == IRType::I8) opType = "int8_t";
+                    else if (it->second == IRType::I16) opType = "int16_t";
+                    else if (it->second == IRType::I32) opType = "int32_t";
+                }
+                out << "(" << getCType(inst.result.type) << ")(int64_t)(" << opType << ")" << getValueName(inst.operands[0]);
+            }
+            break;
         case IROp::IR_EQ:
             out << getValueName(inst.operands[0]) << " == " << getValueName(inst.operands[1]);
             break;
@@ -226,7 +237,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
                 if (inst.memType == IRType::I8) readExpr = "(int32_t)(int8_t)" + readExpr;
                 else if (inst.memType == IRType::I16) readExpr = "(int32_t)(int16_t)" + readExpr;
                 else if (inst.memType == IRType::I32) readExpr = "(int32_t)" + readExpr;
-                else readExpr = "(int64_t)" + readExpr;
+                else if (inst.memType == IRType::I64) readExpr = "(int64_t)" + readExpr;
             }
             out << readExpr;
             break;
@@ -328,7 +339,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "_mm_sra_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
             break;
         default:
-            out << "// TODO: Unimplemented instruction (" << getOpString(inst.op) << ")";
+            out << "0; // TODO: Unimplemented instruction (" << getOpString(inst.op) << ")";
             break;
     }
 

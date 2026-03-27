@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <stdexcept>
 #include <cstdio>
+#include <thread>
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -84,21 +86,32 @@ std::string GhidraBridge::httpGet(const std::string& path) {
         throw std::runtime_error("GhidraBridge: not connected");
     }
 
-    ++requestCount_;
-    auto res = impl_->client->Get(path);
+    int maxRetries = 3;
+    for (int attempt = 0; attempt < maxRetries; ++attempt) {
+        ++requestCount_;
+        auto res = impl_->client->Get(path);
 
-    if (!res) {
-        throw std::runtime_error("GhidraBridge: HTTP request failed for " +
-                                 path + " (error: " +
-                                 httplib::to_string(res.error()) + ")");
+        if (res) {
+            if (res->status != 200) {
+                throw std::runtime_error("GhidraBridge: HTTP " +
+                                         std::to_string(res->status) + " for " + path);
+            }
+            return res->body;
+        }
+
+        // If 'res' is null, it's a connection error (e.g. port exhaustion).
+        if (attempt < maxRetries - 1) {
+            // Wait 10 seconds for TIME_WAIT sockets to clear and retry
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+            continue;
+        } else {
+            throw std::runtime_error("GhidraBridge: HTTP request failed for " +
+                                     path + " (error: " +
+                                     httplib::to_string(res.error()) + ")");
+        }
     }
-
-    if (res->status != 200) {
-        throw std::runtime_error("GhidraBridge: HTTP " +
-                                 std::to_string(res->status) + " for " + path);
-    }
-
-    return res->body;
+    
+    return "";
 }
 
 // ── Connection ──────────────────────────────────────────────────────────────
@@ -106,6 +119,7 @@ std::string GhidraBridge::httpGet(const std::string& path) {
 bool GhidraBridge::connect() {
     try {
         impl_->client = std::make_unique<httplib::Client>(host_, port_);
+        impl_->client->set_keep_alive(true);
         impl_->client->set_connection_timeout(5);   // 5 seconds
         impl_->client->set_read_timeout(30);         // 30 seconds for large responses
 

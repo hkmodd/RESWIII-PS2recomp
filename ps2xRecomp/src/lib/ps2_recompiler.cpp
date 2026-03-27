@@ -1101,6 +1101,10 @@ namespace ps2recomp
                     chunkOutput << "#ifdef _DEBUG\n";
                     chunkOutput << "#include \"ps2_log.h\"\n";
                     chunkOutput << "#endif\n\n";
+                    chunkOutput << "static inline __m128i to_m128i(__m128i v) { return v; }\n";
+                    chunkOutput << "static inline __m128i to_m128i(uint64_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
+                    chunkOutput << "static inline __m128i to_m128i(uint32_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
+                    chunkOutput << "static inline __m128i to_m128i(int32_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n\n";
                 };
 
                 auto flushChunk = [&]() {
@@ -1268,10 +1272,14 @@ namespace ps2recomp
                 combinedOutput << "#include \"ps2_recompiled_stubs.h\"\n";
                 combinedOutput << "#include \"ps2_syscalls.h\"\n";
                 combinedOutput << "#include \"ps2_stubs.h\"\n";
+                combinedOutput << "#include <emmintrin.h>\n";
                 combinedOutput << "#ifdef _DEBUG\n";
                 combinedOutput << "#include \"ps2_log.h\"\n";
-                combinedOutput << "#endif\n";
-                combinedOutput << "\n";
+                combinedOutput << "#endif\n\n";
+                combinedOutput << "static inline __m128i to_m128i(__m128i v) { return v; }\n";
+                combinedOutput << "static inline __m128i to_m128i(uint64_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
+                combinedOutput << "static inline __m128i to_m128i(uint32_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n";
+                combinedOutput << "static inline __m128i to_m128i(int32_t v) { return _mm_cvtsi64_si128(static_cast<int64_t>(v)); }\n\n";
 
                 for (const auto &function : m_functions)
                 {
