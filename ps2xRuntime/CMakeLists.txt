@@ -46,6 +46,10 @@ file(GLOB STARWARS_CHUNKS CONFIGURE_DEPENDS
 )
 list(APPEND RUNNER_SRC_FILES ${STARWARS_CHUNKS})
 
+# Remove the dummy register_functions and use the generated one
+list(REMOVE_ITEM RUNNER_SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/register_functions.cpp")
+list(APPEND RUNNER_SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../output/register_functions.cpp")
+
 set(RUNNER_MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/main.cpp")
 set(ROOT_MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 
@@ -62,6 +66,10 @@ add_executable(ps2EntryRunner
 if(MSVC)
     target_compile_options(ps2EntryRunner PRIVATE /FS)
 endif()
+
+target_include_directories(ps2EntryRunner PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../output"
+)
 
 target_include_directories(ps2_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

@@ -955,7 +955,7 @@ namespace ps2recomp
                             code = "// THUNK\n" + code;
                         }
                         
-                        m_irGeneratedFunctions[gf.startAddr] = code;
+                        m_irGeneratedFunctions[gf.startAddr] = {"ps2_" + irFunc->name, code};
 
                         processedCount++;
                     } catch (const std::exception& e) {
@@ -1037,6 +1037,51 @@ namespace ps2recomp
                 fs::path outDir = m_config.outputPath;
                 fs::create_directories(outDir);
 
+                // Generate the global forward header for the C++ compiler
+                std::stringstream headerOut;
+                headerOut << "#ifndef PS2_RECOMPILED_FUNCTIONS_H\n";
+                headerOut << "#define PS2_RECOMPILED_FUNCTIONS_H\n\n";
+                headerOut << "#include <stdint.h>\n\n";
+                headerOut << "struct R5900Context;\n";
+                headerOut << "class PS2Runtime;\n\n";
+                headerOut << "#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n";
+
+                for (const auto& [addr, funcData] : m_irGeneratedFunctions) {
+                    headerOut << "void " << funcData.first << "(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime);\n";
+                }
+
+                headerOut << "\n#ifdef __cplusplus\n}\n#endif\n\n";
+                headerOut << "#endif // PS2_RECOMPILED_FUNCTIONS_H\n";
+
+                fs::path headerPath = outDir / "ps2_recompiled_functions.h";
+                if (!writeToFile(headerPath.string(), headerOut.str())) {
+                    throw std::runtime_error("Failed to write global header: " + headerPath.string());
+                }
+                std::cout << "[FILE I/O] Generated global header with " << m_irGeneratedFunctions.size() << " signatures.\n";
+
+                if (!generateStubHeader()) {
+                    std::cerr << "Failed to generate stub header.\n";
+                }
+
+                // Generate register_functions.cpp
+                std::stringstream regOutput;
+                regOutput << "#include \"ps2_runtime.h\"\n";
+                regOutput << "#include \"ps2_recompiled_functions.h\"\n";
+                regOutput << "#include \"ps2_stubs.h\"\n"; // For any stubs
+                regOutput << "#include \"ps2_syscalls.h\"\n\n";
+                regOutput << "void registerAllFunctions(PS2Runtime& runtime) {\n";
+
+                for (const auto& [addr, funcData] : m_irGeneratedFunctions) {
+                    regOutput << "    runtime.registerFunction(0x" << std::hex << addr << std::dec << ", " << funcData.first << ");\n";
+                }
+                regOutput << "}\n";
+
+                fs::path regPath = outDir / "register_functions.cpp";
+                if (!writeToFile(regPath.string(), regOutput.str())) {
+                    throw std::runtime_error("Failed to write register_functions.cpp");
+                }
+                std::cout << "[FILE I/O] Generated register_functions.cpp with " << m_irGeneratedFunctions.size() << " bindings.\n";
+
                 const size_t FUNC_PER_CHUNK = 2000;
                 size_t currentChunk = 0;
                 size_t funcInChunk = 0;
@@ -1075,8 +1120,8 @@ namespace ps2recomp
                 writeHeader();
                 std::cout << "\n[FILE I/O] Writing " << m_irGeneratedFunctions.size() << " translated functions in chunks...\n";
 
-                for (const auto& [addr, code] : m_irGeneratedFunctions) {
-                    chunkOutput << code << "\n\n";
+                for (const auto& [addr, funcData] : m_irGeneratedFunctions) {
+                    chunkOutput << funcData.second << "\n\n";
                     funcInChunk++;
                     if (funcInChunk >= FUNC_PER_CHUNK) {
                         flushChunk();

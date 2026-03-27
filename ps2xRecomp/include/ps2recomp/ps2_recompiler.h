@@ -63,7 +63,7 @@ namespace ps2recomp
         std::unordered_set<uint32_t> m_stubFunctionStarts;
         std::unordered_map<uint32_t, std::string> m_stubHandlerBindingsByStart;
         std::map<uint32_t, std::string> m_generatedStubs;
-        std::map<uint32_t, std::string> m_irGeneratedFunctions;
+        std::map<uint32_t, std::pair<std::string, std::string>> m_irGeneratedFunctions;
         std::unordered_map<uint32_t, std::string> m_functionRenames;
         CodeGenerator::BootstrapInfo m_bootstrapInfo;
 
