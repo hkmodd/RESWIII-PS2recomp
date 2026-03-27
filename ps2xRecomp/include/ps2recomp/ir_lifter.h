@@ -283,9 +283,19 @@ private:
     uint32_t computeBranchTarget(uint32_t pc, int16_t offset) const;
     uint32_t computeJumpTarget(uint32_t pc, uint32_t target26) const;
 
+    // ── Helper: emit conditional branch ──────────────────────────────────
+    void emitCondBranch(ir::IRFunction& func, ir::IRBasicBlock& bb,
+                        ir::IROp cmpOp, ir::ValueId lhs, ir::ValueId rhs,
+                        uint32_t targetAddr, uint32_t srcAddr);
+
     // ── Helper: emit a memory address computation (base + offset) ───────
     ir::ValueId emitAddrCalc(ir::IRFunction& func, ir::IRBasicBlock& bb,
                              uint8_t baseReg, int16_t offset, uint32_t srcAddr);
+
+    // ── Helper: emit FPU compare ────────────────────────────────────────
+    void emitFPUCompare(ir::IRFunction& func, ir::IRBasicBlock& bb,
+                        ir::IROp cmpOp, const GhidraInstruction& instr,
+                        const MIPSFields& f);
 
     // ── State ───────────────────────────────────────────────────────────
     bool           emitComments_   = true;

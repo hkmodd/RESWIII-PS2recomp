@@ -19,7 +19,7 @@ void IRLifter::emitCondBranch(IRFunction& func, IRBasicBlock& bb,
     // fall-through block is wired in liftFunction's post-pass
 
     IRInst br;
-    br.op = IROp::IR_CONDBR;
+    br.op = IROp::IR_BRANCH;
     br.srcAddress = srcAddr;
     br.operands = {cId};
     br.branchTarget = tgtIdx;
@@ -160,7 +160,7 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
                     for (const auto& case_val : jt.entries) {
                         uint32_t targetIdx = getOrCreateBlock(func, case_val.targetAddr);
                         sw.switchTargets.push_back(targetIdx);
-                        sw.switchValues.push_back(case_val.caseIndex);
+                        sw.switchValues.push_back(case_val.targetAddr);
                         
                         bb.successors.push_back(targetIdx);
                         func.blocks[targetIdx].predecessors.push_back(bb.index);

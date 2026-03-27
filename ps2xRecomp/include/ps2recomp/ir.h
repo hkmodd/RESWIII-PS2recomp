@@ -259,6 +259,7 @@ enum class IROp : uint16_t {
     IR_SEXT,            // Sign-extend (e.g., I32 → I64)
     IR_ZEXT,            // Zero-extend (e.g., I8 → I32 for LBU)
     IR_TRUNC,           // Truncate (e.g., I64 → I32)
+    IR_BITCAST,         // Bitwise cast between types of same size
 
     // =========================================================================
     // Integer Logic
@@ -275,12 +276,18 @@ enum class IROp : uint16_t {
     IR_SLL,             // Shift Left Logical  (SLL, SLLV, DSLL, DSLLV, DSLL32)
     IR_SRL,             // Shift Right Logical (SRL, SRLV, DSRL, DSRLV, DSRL32)
     IR_SRA,             // Shift Right Arithmetic (SRA, SRAV, DSRA, DSRAV, DSRA32)
+    IR_SHL,             // Shift Left
+    IR_LSHR,            // Logical Shift Right
+    IR_ASHR,            // Arithmetic Shift Right
 
     // =========================================================================
     // Comparisons (produce I1 boolean result)
     // =========================================================================
     IR_SLT,             // Set on Less Than signed   (SLT, SLTI)
     IR_SLTU,            // Set on Less Than unsigned  (SLTU, SLTIU)
+    IR_SLE,             // Set on Less Equal
+    IR_SGT,             // Set on Greater Than
+    IR_SGE,             // Set on Greater Equal
     IR_EQ,              // Equality compare           (for BEQ/BNE)
     IR_NE,              // Not-equal compare
 
@@ -295,6 +302,9 @@ enum class IROp : uint16_t {
     // =========================================================================
     IR_MUL,             // Multiply (result to HI:LO)        — MULT, MULTU
     IR_DIV,             // Divide (quotient→LO, remainder→HI) — DIV, DIVU
+    IR_MOD,             // Modulo (signed)
+    IR_DIVU,            // Divide (unsigned)
+    IR_MODU,            // Modulo (unsigned)
     IR_MADD,            // Multiply-Add to HI:LO              — MADD, MADDU (MMI)
     IR_MSUB,            // Multiply-Sub from HI:LO            — MSUB, MSUBU (MMI)
 
@@ -677,6 +687,7 @@ inline const char* irOpName(IROp op) {
         case IROp::IR_SEXT:         return "SEXT";
         case IROp::IR_ZEXT:         return "ZEXT";
         case IROp::IR_TRUNC:        return "TRUNC";
+        case IROp::IR_BITCAST:      return "BITCAST";
         case IROp::IR_AND:          return "AND";
         case IROp::IR_OR:           return "OR";
         case IROp::IR_XOR:          return "XOR";
@@ -685,13 +696,22 @@ inline const char* irOpName(IROp op) {
         case IROp::IR_SLL:          return "SLL";
         case IROp::IR_SRL:          return "SRL";
         case IROp::IR_SRA:          return "SRA";
+        case IROp::IR_SHL:          return "SHL";
+        case IROp::IR_LSHR:         return "LSHR";
+        case IROp::IR_ASHR:         return "ASHR";
         case IROp::IR_SLT:          return "SLT";
         case IROp::IR_SLTU:         return "SLTU";
+        case IROp::IR_SLE:          return "SLE";
+        case IROp::IR_SGT:          return "SGT";
+        case IROp::IR_SGE:          return "SGE";
         case IROp::IR_EQ:           return "EQ";
         case IROp::IR_NE:           return "NE";
         case IROp::IR_SELECT:       return "SELECT";
         case IROp::IR_MUL:          return "MUL";
         case IROp::IR_DIV:          return "DIV";
+        case IROp::IR_MOD:          return "MOD";
+        case IROp::IR_DIVU:         return "DIVU";
+        case IROp::IR_MODU:         return "MODU";
         case IROp::IR_MADD:         return "MADD";
         case IROp::IR_MSUB:         return "MSUB";
         case IROp::IR_MUL1:         return "MUL1";

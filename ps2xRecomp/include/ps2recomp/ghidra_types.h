@@ -131,9 +131,9 @@ struct GhidraFunctionDetail {
     std::vector<GhidraXRef>         xrefsTo;    // incoming refs
 };
 
-// ── JumpTableEntry / ResolvedJumpTable ──────────────────────────────────────
+// ── ResolvedJumpEntry / ResolvedJumpTable ────────────────────────────────────
 // Output of JumpResolver — resolved indirect jump (jr $reg) via .rodata.
-struct JumpTableEntry {
+struct ResolvedJumpEntry {
     uint32_t caseIndex;   // 0-based index into table
     uint32_t targetAddr;  // branch target address
 };
@@ -143,7 +143,7 @@ struct ResolvedJumpTable {
     uint32_t    tableStart  = 0;  // .rodata address where table begins
     uint32_t    entryCount  = 0;
     std::string regName;          // register used by jr (e.g. "t0")
-    std::vector<JumpTableEntry> entries;
+    std::vector<ResolvedJumpEntry> entries;
 };
 
 // ── ValidationResult ────────────────────────────────────────────────────────

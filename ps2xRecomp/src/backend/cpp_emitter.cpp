@@ -116,9 +116,40 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             // Cast to signed to ensure arithmetic shift
             out << "((int32_t)" << getValueName(inst.operands[0]) << ") >> " << getValueName(inst.operands[1]);
             break;
+        case IROp::IR_SHL:
+            out << getValueName(inst.operands[0]) << " << " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_LSHR:
+            out << getValueName(inst.operands[0]) << " >> " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_ASHR:
+            out << "((int32_t)" << getValueName(inst.operands[0]) << ") >> " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_MUL:
+            out << getValueName(inst.operands[0]) << " * " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_DIV:
+            out << getValueName(inst.operands[0]) << " / " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_MOD:
+            out << getValueName(inst.operands[0]) << " % " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_DIVU:
+            out << getValueName(inst.operands[0]) << " / " << getValueName(inst.operands[1]);
+            break;
+        case IROp::IR_MODU:
+            out << getValueName(inst.operands[0]) << " % " << getValueName(inst.operands[1]);
+            break;
         case IROp::IR_LUI:
             out << "((" << getValueName(inst.operands[0]) << ") << 16)";
             break;
+        case IROp::IR_BITCAST: {
+            std::string t = "int32_t";
+            if (inst.result.type == IRType::F32) t = "float";
+            else if (inst.result.type == IRType::I64) t = "int64_t";
+            out << "std::bit_cast<" << t << ">(" << getValueName(inst.operands[0]) << ")";
+            break;
+        }
         case IROp::IR_EQ:
             out << getValueName(inst.operands[0]) << " == " << getValueName(inst.operands[1]);
             break;
@@ -130,6 +161,15 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             break;
         case IROp::IR_SLTU:
             out << "(" << getValueName(inst.operands[0]) << " < " << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            break;
+        case IROp::IR_SLE:
+            out << "((int32_t)" << getValueName(inst.operands[0]) << " <= (int32_t)" << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            break;
+        case IROp::IR_SGT:
+            out << "((int32_t)" << getValueName(inst.operands[0]) << " > (int32_t)" << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            break;
+        case IROp::IR_SGE:
+            out << "((int32_t)" << getValueName(inst.operands[0]) << " >= (int32_t)" << getValueName(inst.operands[1]) << " ? 1 : 0)";
             break;
         case IROp::IR_BRANCH:
             if (inst.operands.empty()) {
@@ -147,11 +187,11 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_SWITCH:
             out << "switch (" << getValueName(inst.operands[0]) << ") {\n";
             for (size_t i = 0; i < inst.switchTargets.size(); ++i) {
-                out << emitIndent(indentLevel + 1) << "case 0x" << std::hex << inst.switchValues[i] << std::dec 
+                out << "        case 0x" << std::hex << inst.switchValues[i] << std::dec 
                     << ": goto bb_" << inst.switchTargets[i] << ";\n";
             }
-            out << emitIndent(indentLevel + 1) << "default: ctx->pc = " << getValueName(inst.operands[0]) << "; return; // Bounds limit / Fallback\n";
-            out << emitIndent(indentLevel) << "}";
+            out << "        default: ctx->pc = " << getValueName(inst.operands[0]) << "; return; // Bounds limit / Fallback\n";
+            out << "    }";
             break;
         case IROp::IR_CALL:
             if (!inst.operands.empty()) {
@@ -236,18 +276,11 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_FSQRT:
             out << "std::sqrt(" << getValueName(inst.operands[0]) << ")";
             break;
-        case IROp::IR_SITOFP:
+        case IROp::IR_CVT_S_W:
             out << "(float)((int32_t)" << getValueName(inst.operands[0]) << ")";
             break;
-        case IROp::IR_FPTOSI:
+        case IROp::IR_TRUNC_W_S:
             out << "(int32_t)(" << getValueName(inst.operands[0]) << ")";
-            break;
-        case IROp::IR_BITCAST:
-            if (inst.result.type == IRType::F32) {
-                out << "std::bit_cast<float>(" << getValueName(inst.operands[0]) << ")";
-            } else {
-                out << "std::bit_cast<uint32_t>(" << getValueName(inst.operands[0]) << ")";
-            }
             break;
         case IROp::IR_FCMP_EQ:
             out << "(" << getValueName(inst.operands[0]) << " == " << getValueName(inst.operands[1]) << " ? 1 : 0)";
