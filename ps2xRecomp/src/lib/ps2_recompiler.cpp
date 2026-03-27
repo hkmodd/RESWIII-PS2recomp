@@ -1102,6 +1102,9 @@ namespace ps2recomp
                     chunkOutput << "#include \"ps2_syscalls.h\"\n";
                     chunkOutput << "#include \"ps2_stubs.h\"\n";
                     chunkOutput << "#include <emmintrin.h>\n";
+                    chunkOutput << "#pragma clang diagnostic ignored \"-Wunused-label\"\n";
+                    chunkOutput << "#pragma clang diagnostic ignored \"-Wunused-function\"\n";
+                    chunkOutput << "#pragma clang diagnostic ignored \"-Wunused-variable\"\n";
                     chunkOutput << "#ifdef _DEBUG\n";
                     chunkOutput << "#include \"ps2_log.h\"\n";
                     chunkOutput << "#endif\n\n";
@@ -1277,6 +1280,9 @@ namespace ps2recomp
                 combinedOutput << "#include \"ps2_syscalls.h\"\n";
                 combinedOutput << "#include \"ps2_stubs.h\"\n";
                 combinedOutput << "#include <emmintrin.h>\n";
+                combinedOutput << "#pragma clang diagnostic ignored \"-Wunused-label\"\n";
+                combinedOutput << "#pragma clang diagnostic ignored \"-Wunused-function\"\n";
+                combinedOutput << "#pragma clang diagnostic ignored \"-Wunused-variable\"\n";
                 combinedOutput << "#ifdef _DEBUG\n";
                 combinedOutput << "#include \"ps2_log.h\"\n";
                 combinedOutput << "#endif\n\n";

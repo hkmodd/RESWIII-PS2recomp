@@ -218,7 +218,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             if (inst.result.type == IRType::F32) {
                 out << inst.constData.immFloat << "f";
             } else {
-                out << "0x" << std::hex << inst.constData.immUnsigned << std::dec;
+                out << "(" << getCType(inst.result.type) << ")0x" << std::hex << inst.constData.immUnsigned << std::dec << "ULL";
             }
             break;
         case IROp::IR_LOAD: {
