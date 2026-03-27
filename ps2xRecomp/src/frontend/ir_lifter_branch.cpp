@@ -3,6 +3,7 @@
 // Part of PS2reAIcomp — Sprint 2
 // ============================================================================
 #include "ps2recomp/ir_lifter.h"
+#include <algorithm>
 namespace ps2recomp {
 using namespace ir;
 
@@ -156,14 +157,19 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
                     sw.srcAddress = instr.addr;
                     sw.operands = {rs}; // Usually we'd want the index reg, but we'll use the target address for now
                     sw.comment = "Switch statement (resolved)";
-                    // Save cases
+                    // Save cases (Deduplicated)
+                    std::vector<uint32_t> seen;
                     for (const auto& case_val : jt.entries) {
-                        uint32_t targetIdx = getOrCreateBlock(func, case_val.targetAddr);
-                        sw.switchTargets.push_back(targetIdx);
-                        sw.switchValues.push_back(case_val.targetAddr);
-                        
-                        bb.successors.push_back(targetIdx);
-                        func.blocks[targetIdx].predecessors.push_back(bb.index);
+                        if (std::find(seen.begin(), seen.end(), case_val.targetAddr) == seen.end()) {
+                            seen.push_back(case_val.targetAddr);
+                            uint32_t targetIdx = getOrCreateBlock(func, case_val.targetAddr);
+                            sw.switchTargets.push_back(targetIdx);
+                            sw.switchValues.push_back(case_val.targetAddr);
+                            
+                            // Only add edge once
+                            bb.successors.push_back(targetIdx);
+                            func.blocks[targetIdx].predecessors.push_back(bb.index);
+                        }
                     }
                     bb.instructions.push_back(std::move(sw));
                     resolved = true;

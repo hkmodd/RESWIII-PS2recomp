@@ -948,6 +948,10 @@ namespace ps2recomp
                             irFunc->name += "_thunk";
                         }
                         
+                        std::stringstream nameAddrSuffix;
+                        nameAddrSuffix << "_" << std::hex << gf.startAddr << std::dec;
+                        irFunc->name += nameAddrSuffix.str();
+                        
                         CppEmitter emitter;
                         std::string code = emitter.emitFunction(*irFunc);
                         

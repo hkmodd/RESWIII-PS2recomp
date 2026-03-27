@@ -18,7 +18,7 @@ std::string CppEmitter::emitFunction(const IRFunction& func) {
     std::ostringstream out;
 
     out << "// Emitted C++ backend for " << func.name << "\n";
-    out << "extern \"C\" void " << func.name << "(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {\n";
+    out << "extern \"C\" void ps2_" << func.name << "(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {\n";
     out << "    // TODO: Define context and basic arguments\n\n";
     // Setup block dispatch for indirect intra-function jumps or just basic blocks if needed
     // For now we just dump basic blocks linearly.
@@ -29,7 +29,7 @@ std::string CppEmitter::emitFunction(const IRFunction& func) {
         for (const auto& inst : bb.instructions) {
             emitInstruction(out, inst);
         }
-        out << "\n";
+        out << "}\n";
     }
 
     out << "}\n";
@@ -37,7 +37,7 @@ std::string CppEmitter::emitFunction(const IRFunction& func) {
 }
 
 void CppEmitter::emitBasicBlockHeader(std::ostringstream& out, const IRBasicBlock& bb) {
-    out << "bb_" << bb.index << ":\n";
+    out << "bb_" << bb.index << ": {\n";
     if (!bb.label.empty()) {
         out << "    // " << bb.label << "\n";
     }
@@ -48,7 +48,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
     
     if (inst.hasResult()) {
         valueTypes_[inst.result.id] = inst.result.type;
-        out << getCType(inst.result.type) << " " << getValueName(inst.result.id) << " = ";
+        out << "[[maybe_unused]] " << getCType(inst.result.type) << " " << getValueName(inst.result.id) << " = ";
     }
 
     switch (inst.op) {
