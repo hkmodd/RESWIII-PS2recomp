@@ -259,9 +259,6 @@ enum class IROp : uint16_t {
     IR_SEXT,            // Sign-extend (e.g., I32 → I64)
     IR_ZEXT,            // Zero-extend (e.g., I8 → I32 for LBU)
     IR_TRUNC,           // Truncate (e.g., I64 → I32)
-    IR_BITCAST,         // Reinterpret bits (e.g., I32 ↔ F32, MFC1/MTC1)
-    IR_SITOFP,          // Signed int → float (CVT.S.W)
-    IR_FPTOSI,          // Float → signed int (CVT.W.S, TRUNC.W.S)
 
     // =========================================================================
     // Integer Logic
@@ -286,9 +283,6 @@ enum class IROp : uint16_t {
     IR_SLTU,            // Set on Less Than unsigned  (SLTU, SLTIU)
     IR_EQ,              // Equality compare           (for BEQ/BNE)
     IR_NE,              // Not-equal compare
-    IR_SGE,             // Signed Greater-or-Equal    (for BGEZ)
-    IR_SGT,             // Signed Greater-Than        (for BGTZ)
-    IR_SLE,             // Signed Less-or-Equal       (for BLEZ)
 
     // =========================================================================
     // Conditional Move
@@ -300,10 +294,7 @@ enum class IROp : uint16_t {
     // Multiply / Divide — R5900 writes to HI/LO register pairs
     // =========================================================================
     IR_MUL,             // Multiply (result to HI:LO)        — MULT, MULTU
-    IR_DIV,             // Divide signed (quotient→LO)       — DIV
-    IR_DIVU,            // Divide unsigned                    — DIVU
-    IR_MOD,             // Modulo signed (remainder→HI)      — DIV (HI part)
-    IR_MODU,            // Modulo unsigned                    — DIVU (HI part)
+    IR_DIV,             // Divide (quotient→LO, remainder→HI) — DIV, DIVU
     IR_MADD,            // Multiply-Add to HI:LO              — MADD, MADDU (MMI)
     IR_MSUB,            // Multiply-Sub from HI:LO            — MSUB, MSUBU (MMI)
 
@@ -502,8 +493,6 @@ enum class IROp : uint16_t {
     // --- Parallel Add/Sub Bytes-Halfwords ---
     IR_PADSBH,          // Parallel Add/Sub Bytes-Halfwords
 
-
-
     // --- Parallel Shift ---
     IR_PSLLW,           // Parallel Shift Left Logical Word
     IR_PSLLH,           // Parallel Shift Left Logical Halfword
@@ -684,9 +673,6 @@ inline const char* irOpName(IROp op) {
         case IROp::IR_SEXT:         return "SEXT";
         case IROp::IR_ZEXT:         return "ZEXT";
         case IROp::IR_TRUNC:        return "TRUNC";
-        case IROp::IR_BITCAST:      return "BITCAST";
-        case IROp::IR_SITOFP:       return "SITOFP";
-        case IROp::IR_FPTOSI:       return "FPTOSI";
         case IROp::IR_AND:          return "AND";
         case IROp::IR_OR:           return "OR";
         case IROp::IR_XOR:          return "XOR";
@@ -699,15 +685,9 @@ inline const char* irOpName(IROp op) {
         case IROp::IR_SLTU:         return "SLTU";
         case IROp::IR_EQ:           return "EQ";
         case IROp::IR_NE:           return "NE";
-        case IROp::IR_SGE:          return "SGE";
-        case IROp::IR_SGT:          return "SGT";
-        case IROp::IR_SLE:          return "SLE";
         case IROp::IR_SELECT:       return "SELECT";
         case IROp::IR_MUL:          return "MUL";
         case IROp::IR_DIV:          return "DIV";
-        case IROp::IR_DIVU:         return "DIVU";
-        case IROp::IR_MOD:          return "MOD";
-        case IROp::IR_MODU:         return "MODU";
         case IROp::IR_MADD:         return "MADD";
         case IROp::IR_MSUB:         return "MSUB";
         case IROp::IR_MUL1:         return "MUL1";

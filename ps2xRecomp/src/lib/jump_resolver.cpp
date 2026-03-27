@@ -257,7 +257,8 @@ std::optional<ResolvedJumpTable> JumpResolver::resolveJr(
             if (!foundSltiu) break;
             // If sltiu was found, include but mark as potentially invalid
         }
-        GhidraJumpTableEntry entry;
+
+        JumpTableEntry entry;
         entry.caseIndex  = i;
         entry.targetAddr = target;
         result.entries.push_back(entry);

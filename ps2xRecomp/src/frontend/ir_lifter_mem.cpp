@@ -12,7 +12,7 @@ void IRLifter::liftLB(IRFunction& func, IRBasicBlock& bb,
                        const GhidraInstruction& instr,
                        const MIPSFields& f) {
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::I8, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::I8, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     auto sx = makeUnaryOp(func, IROp::IR_SEXT, IRType::I32, lId, instr.addr);
@@ -25,7 +25,7 @@ void IRLifter::liftLBU(IRFunction& func, IRBasicBlock& bb,
                         const GhidraInstruction& instr,
                         const MIPSFields& f) {
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::I8, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::I8, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     auto zx = makeUnaryOp(func, IROp::IR_ZEXT, IRType::I32, lId, instr.addr);
@@ -38,7 +38,7 @@ void IRLifter::liftLH(IRFunction& func, IRBasicBlock& bb,
                        const GhidraInstruction& instr,
                        const MIPSFields& f) {
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::I16, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::I16, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     auto sx = makeUnaryOp(func, IROp::IR_SEXT, IRType::I32, lId, instr.addr);
@@ -51,7 +51,7 @@ void IRLifter::liftLHU(IRFunction& func, IRBasicBlock& bb,
                         const GhidraInstruction& instr,
                         const MIPSFields& f) {
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::I16, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::I16, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     auto zx = makeUnaryOp(func, IROp::IR_ZEXT, IRType::I32, lId, instr.addr);
@@ -64,7 +64,7 @@ void IRLifter::liftLW(IRFunction& func, IRBasicBlock& bb,
                        const GhidraInstruction& instr,
                        const MIPSFields& f) {
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::I32, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::I32, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     emitGPRWrite(func, bb, f.rt, lId, instr.addr);
@@ -75,7 +75,7 @@ void IRLifter::liftLWU(IRFunction& func, IRBasicBlock& bb,
                         const MIPSFields& f) {
     // LWU: zero-extends word to 64-bit
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::I32, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::I32, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     auto zx = makeUnaryOp(func, IROp::IR_ZEXT, IRType::I64, lId, instr.addr);
@@ -88,7 +88,7 @@ void IRLifter::liftLD(IRFunction& func, IRBasicBlock& bb,
                        const GhidraInstruction& instr,
                        const MIPSFields& f) {
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::I64, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::I64, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     emitGPRWrite(func, bb, f.rt, lId, instr.addr);
@@ -98,7 +98,7 @@ void IRLifter::liftLQ(IRFunction& func, IRBasicBlock& bb,
                        const GhidraInstruction& instr,
                        const MIPSFields& f) {
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::I128, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::I128, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     emitGPRWrite(func, bb, f.rt, lId, instr.addr);

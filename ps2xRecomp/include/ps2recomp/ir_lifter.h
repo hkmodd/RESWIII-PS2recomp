@@ -155,14 +155,6 @@ private:
 
     uint32_t getOrCreateBlock(ir::IRFunction& func, uint32_t addr);
 
-    // ── Branch / compare helpers ────────────────────────────────────────
-    void emitCondBranch(ir::IRFunction& func, ir::IRBasicBlock& bb,
-                        ir::IROp cmpOp, ir::ValueId lhs, ir::ValueId rhs,
-                        uint32_t targetAddr, uint32_t srcAddr);
-    void emitFPUCompare(ir::IRFunction& func, ir::IRBasicBlock& bb,
-                        ir::IROp cmpOp, const GhidraInstruction& instr,
-                        const MIPSFields& f);
-
     // ── Individual instruction lifters ──────────────────────────────────
     // Integer ALU
     void liftADD   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
@@ -211,20 +203,6 @@ private:
     void liftMFLO  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
     void liftMTHI  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
     void liftMTLO  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-
-    // MMI (Multimedia) Base
-    void liftPADDB (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPEXTUW(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPCPYLD(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPEXTLH(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPEXTUH(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPEXTLB(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPEXTUB(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPPACB (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPPACW (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPSLLW (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPSRLW (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftPSRAW (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
 
     // Memory loads
     void liftLB    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);

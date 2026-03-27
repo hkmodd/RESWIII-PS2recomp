@@ -27,11 +27,6 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["subu"]   = &IRLifter::liftSUBU;
     dispatchTable_["dadd"]   = &IRLifter::liftDADD;
     dispatchTable_["daddu"]  = &IRLifter::liftDADDU;
-    // Pseudo-instruction aliases
-    dispatchTable_["move"]   = &IRLifter::liftADDU;
-    dispatchTable_["clear"]  = &IRLifter::liftADDU;
-    dispatchTable_["li"]     = &IRLifter::liftADDIU;
-    dispatchTable_["b"]      = &IRLifter::liftBEQ;
     // Integer ALU — I-type
     dispatchTable_["addi"]   = &IRLifter::liftADDI;
     dispatchTable_["addiu"]  = &IRLifter::liftADDIU;
@@ -59,19 +54,6 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["sltiu"]  = &IRLifter::liftSLTIU;
     // LUI
     dispatchTable_["lui"]    = &IRLifter::liftLUI;
-    // MMI Base
-    dispatchTable_["paddb"]  = &IRLifter::liftPADDB;
-    dispatchTable_["pextuw"] = &IRLifter::liftPEXTUW;
-    dispatchTable_["pcpyld"] = &IRLifter::liftPCPYLD;
-    dispatchTable_["pextlh"] = &IRLifter::liftPEXTLH;
-    dispatchTable_["pextuh"] = &IRLifter::liftPEXTUH;
-    dispatchTable_["pextlb"] = &IRLifter::liftPEXTLB;
-    dispatchTable_["pextub"] = &IRLifter::liftPEXTUB;
-    dispatchTable_["ppacb"]  = &IRLifter::liftPPACB;
-    dispatchTable_["ppacw"]  = &IRLifter::liftPPACW;
-    dispatchTable_["psllw"]  = &IRLifter::liftPSLLW;
-    dispatchTable_["psrlw"]  = &IRLifter::liftPSRLW;
-    dispatchTable_["psraw"]  = &IRLifter::liftPSRAW;
     // Multiply / Divide
     dispatchTable_["mult"]   = &IRLifter::liftMULT;
     dispatchTable_["multu"]  = &IRLifter::liftMULTU;
@@ -281,15 +263,6 @@ std::optional<IRFunction> IRLifter::liftFunction(
 
         bb->mipsEndAddr = instr.addr + 4;
 
-        bool isBranchInstr = instr.isBranch() || instr.isJal() || instr.isJ() ||
-                             instr.isJumpRegister() || instr.isJalr() ||
-                             instr.mnemonic == "bc1t" || instr.mnemonic == "bc1f" ||
-                             instr.mnemonic == "bc1tl" || instr.mnemonic == "bc1fl" ||
-                             instr.mnemonic == "beql" || instr.mnemonic == "bnel" ||
-                             instr.mnemonic == "bgezl" || instr.mnemonic == "bgtzl" ||
-                             instr.mnemonic == "blezl" || instr.mnemonic == "bltzl" ||
-                             instr.mnemonic == "syscall"; // SYSCALL ends a BB but has no delay slot
-
         // Decode raw fields
         auto fields = decodeFields(instr.rawBytes);
 
@@ -319,48 +292,6 @@ std::optional<IRFunction> IRLifter::liftFunction(
         }
 
         if (progress) progress(i, stats_.totalInstructions);
-
-        // --- Delay Slot Folding ---
-        if (isBranchInstr && foldDelaySlots_ && i + 1 < disasm.size() && instr.mnemonic != "syscall") {
-            if (!bb->instructions.empty() && bb->instructions.back().isTerminator()) {
-                // 1. Pop the terminator (branch/call) from the IR list
-                IRInst term = std::move(bb->instructions.back());
-                bb->instructions.pop_back();
-
-                // 2. Consume the next instruction (the delay slot)
-                i++;
-                const auto& delayInstr = disasm[i];
-                bb->mipsEndAddr = delayInstr.addr + 4;
-
-                auto delayFields = decodeFields(delayInstr.rawBytes);
-
-                if (emitComments_) {
-                    std::string text = delayInstr.mnemonic;
-                    if (!delayInstr.operands.empty()) text += " " + delayInstr.operands;
-                    emitComment(*bb, text, delayInstr.addr);
-                }
-
-                if (delayInstr.isNop()) {
-                    stats_.skippedNops++;
-                    stats_.liftedInstructions++;
-                } else {
-                    auto delayHandler = dispatchTable_.find(delayInstr.mnemonic);
-                    if (delayHandler != dispatchTable_.end()) {
-                        (this->*(delayHandler->second))(func, *bb, delayInstr, delayFields);
-                        stats_.liftedInstructions++;
-                    } else {
-                        liftUnhandled(func, *bb, delayInstr, delayFields);
-                        stats_.unhandledMnemonics++;
-                    }
-                }
-
-                // 3. Push the terminator back, effectively placing the delay slot BEFORE the branch
-                bb->instructions.push_back(std::move(term));
-                stats_.delaySlotsFolded++;
-
-                if (progress) progress(i, stats_.totalInstructions);
-            }
-        }
     }
 
     // Wire up fall-through edges between consecutive blocks

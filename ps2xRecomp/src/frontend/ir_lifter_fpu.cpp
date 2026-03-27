@@ -124,7 +124,7 @@ void IRLifter::liftLWC1(IRFunction& func, IRBasicBlock& bb,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
     auto addr = emitAddrCalc(func, bb, f.rs, f.simm16, instr.addr);
-    auto ld = makeLoad(func, IRType::F32, addr, false, instr.addr);
+    auto ld = makeLoad(func, IRType::F32, addr, instr.addr);
     ValueId lId = ld.result.id;
     bb.instructions.push_back(std::move(ld));
     emitFPRWrite(func, bb, f.ft, lId, instr.addr);
@@ -141,16 +141,16 @@ void IRLifter::liftSWC1(IRFunction& func, IRBasicBlock& bb,
 
 // ── FPU compare ─────────────────────────────────────────────────────────────
 
-void IRLifter::emitFPUCompare(IRFunction& func, IRBasicBlock& bb,
-                               IROp cmpOp, const GhidraInstruction& instr,
-                               const MIPSFields& f) {
-    auto fs = emitFPRRead(func, bb, f.fs, instr.addr);
-    auto ft = emitFPRRead(func, bb, f.ft, instr.addr);
+static void emitFPUCompare(IRLifter& self, IRFunction& func, IRBasicBlock& bb,
+                            IROp cmpOp, const GhidraInstruction& instr,
+                            const IRLifter::MIPSFields& f) {
+    auto fs = self.emitFPRRead(func, bb, f.fs, instr.addr);
+    auto ft = self.emitFPRRead(func, bb, f.ft, instr.addr);
     auto cmp = ir::makeBinaryOp(func, cmpOp, IRType::I1, fs, ft, instr.addr);
     ValueId cId = cmp.result.id;
     bb.instructions.push_back(std::move(cmp));
     // Write to FCC (FPU condition code) register
-    auto w = ir::makeRegWrite(IRReg::fpuCC(), cId);
+    auto w = ir::makeRegWrite(IRReg::fcc(), cId);
     w.srcAddress = instr.addr;
     bb.instructions.push_back(std::move(w));
 }
@@ -158,19 +158,19 @@ void IRLifter::emitFPUCompare(IRFunction& func, IRBasicBlock& bb,
 void IRLifter::liftC_EQ_S(IRFunction& func, IRBasicBlock& bb,
                            const GhidraInstruction& instr,
                            const MIPSFields& f) {
-    emitFPUCompare(func, bb, IROp::IR_FCMP_EQ, instr, f);
+    emitFPUCompare(*this, func, bb, IROp::IR_FEQ, instr, f);
 }
 
 void IRLifter::liftC_LT_S(IRFunction& func, IRBasicBlock& bb,
                            const GhidraInstruction& instr,
                            const MIPSFields& f) {
-    emitFPUCompare(func, bb, IROp::IR_FCMP_LT, instr, f);
+    emitFPUCompare(*this, func, bb, IROp::IR_FLT, instr, f);
 }
 
 void IRLifter::liftC_LE_S(IRFunction& func, IRBasicBlock& bb,
                            const GhidraInstruction& instr,
                            const MIPSFields& f) {
-    emitFPUCompare(func, bb, IROp::IR_FCMP_LE, instr, f);
+    emitFPUCompare(*this, func, bb, IROp::IR_FLE, instr, f);
 }
 
 // ── BC1T / BC1F (branch on FPU condition) ───────────────────────────────────
@@ -178,7 +178,7 @@ void IRLifter::liftC_LE_S(IRFunction& func, IRBasicBlock& bb,
 void IRLifter::liftBC1T(IRFunction& func, IRBasicBlock& bb,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto fcc = ir::makeRegRead(func, IRType::I1, IRReg::fpuCC());
+    auto fcc = ir::makeRegRead(func, IRType::I1, IRReg::fcc());
     fcc.srcAddress = instr.addr;
     ValueId fcId = fcc.result.id;
     bb.instructions.push_back(std::move(fcc));
@@ -191,7 +191,7 @@ void IRLifter::liftBC1T(IRFunction& func, IRBasicBlock& bb,
 void IRLifter::liftBC1F(IRFunction& func, IRBasicBlock& bb,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto fcc = ir::makeRegRead(func, IRType::I1, IRReg::fpuCC());
+    auto fcc = ir::makeRegRead(func, IRType::I1, IRReg::fcc());
     fcc.srcAddress = instr.addr;
     ValueId fcId = fcc.result.id;
     bb.instructions.push_back(std::move(fcc));

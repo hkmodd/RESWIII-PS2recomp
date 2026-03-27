@@ -1,0 +1,6 @@
+[general]
+input = "E:\\Programmi VARI\\PROGETTI\\RESWIII\\ISO extracted\\sles_531.55"
+output = "output/"
+
+[patches]
+instructions = []

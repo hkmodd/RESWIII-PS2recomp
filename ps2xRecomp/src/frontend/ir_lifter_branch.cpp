@@ -19,7 +19,7 @@ void IRLifter::emitCondBranch(IRFunction& func, IRBasicBlock& bb,
     // fall-through block is wired in liftFunction's post-pass
 
     IRInst br;
-    br.op = IROp::IR_BRANCH;
+    br.op = IROp::IR_CONDBR;
     br.srcAddress = srcAddr;
     br.operands = {cId};
     br.branchTarget = tgtIdx;
