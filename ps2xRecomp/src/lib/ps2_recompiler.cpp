@@ -919,10 +919,14 @@ namespace ps2recomp
                 size_t failedCount = 0;
 
                 for (auto& gf : ghidraFuncs) {
+                    if (processedCount % 100 == 0 || processedCount == ghidraFuncs.size() - 1) {
+                        std::cout << "\rLifting functions via IR... " << processedCount << "/" << ghidraFuncs.size() << " (Failed: " << failedCount << ")" << std::flush;
+                    }
                     try {
                         auto disasm = bridge.fetchDisassembly(gf.startAddr);
                         if (disasm.empty()) {
                             failedCount++;
+                            processedCount++;
                             continue;
                         }
 
