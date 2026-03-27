@@ -26,7 +26,7 @@ if %errorlevel% neq 0 (
 
 echo [3/3] Building Entry Runner (ps2EntryRunner)...
 echo            (Logging to %BUILD_LOG% to keep terminal clean)
-cmake --build %BUILD_DIR% --target ps2EntryRunner --config Release > %BUILD_LOG% 2>&1
+cmake --build %BUILD_DIR% --target ps2EntryRunner --config Release --parallel > %BUILD_LOG% 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] Runner build failed! See %BUILD_LOG% for details.
     exit /b %errorlevel%
