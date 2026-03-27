@@ -270,6 +270,7 @@ static const std::unordered_map<std::string, std::string> gameDatabase =
     { "SLPS-25111", "Higanbana (Japan)" },
     { "SLPS-20213", "Hissatsu Pachinko Station V4 - Drumtic Mahjong (Japan)" },
     { "SLES-53028", "Hitman - Blood Money (Europe)" },
+	{ "SLES-53155", "Star Wars Episode III - Revenge of the Sith (Europe)" },
     { "SLPS-25269", "Hitman 2 - Silent Assassin (Japan)" },
     { "SLUS-20374", "Hitman 2 - Silent Assassin (USA) (v1.01)" },
     { "SLPM-62072", "Horse Breaker (Japan)" },

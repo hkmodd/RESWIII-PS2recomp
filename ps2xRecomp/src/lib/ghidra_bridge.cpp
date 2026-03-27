@@ -48,9 +48,17 @@ uint32_t GhidraBridge::parseHexAddr(const std::string& s) {
 }
 
 uint32_t GhidraBridge::parseHexBytes(const std::string& hexStr) {
-    // "280C0070" → 0x280C0070 (big-endian as stored in the hex string)
+    // Ghidra returns bytes in memory order (e.g. "2B084300").
+    // Since PS2 is Little-Endian, we must treat this 32-bit integer by reversing the bytes
+    // to decode the actual MIPS 32-bit instruction word (e.g. 0x0043082B).
     if (hexStr.size() != 8) return 0;
-    return static_cast<uint32_t>(std::strtoul(hexStr.c_str(), nullptr, 16));
+    
+    uint32_t raw = static_cast<uint32_t>(std::strtoul(hexStr.c_str(), nullptr, 16));
+    
+    return ((raw & 0xFF000000) >> 24) | 
+           ((raw & 0x00FF0000) >> 8) | 
+           ((raw & 0x0000FF00) << 8) | 
+           ((raw & 0x000000FF) << 24);
 }
 
 std::vector<uint8_t> GhidraBridge::decodeHexString(const std::string& hex) {

@@ -1,3 +1,0 @@
-E:\Programmi VARI\PROGETTI\RESWIII-PS2recomp\output\starwars_000.cpp(77301,17): error : redefinition of 'ps2_AddDmacHandler' [E:\Programmi VARI\PROGETTI\RESWIII-PS2recomp\build_clang\ps2xRuntime\ps2EntryRunner.vcxproj]
-E:\Programmi VARI\PROGETTI\RESWIII-PS2recomp\output\starwars_000.cpp(115454,17): error : redefinition of 'ps2_RFU116_SetSyscall' [E:\Programmi VARI\PROGETTI\RESWIII-PS2recomp\build_clang\ps2xRuntime\ps2EntryRunner.vcxproj]
-E:\Programmi VARI\PROGETTI\RESWIII-PS2recomp\output\starwars_000.cpp(115581,17): error : redefinition of 'ps2_RFU091' [E:\Programmi VARI\PROGETTI\RESWIII-PS2recomp\build_clang\ps2xRuntime\ps2EntryRunner.vcxproj]
