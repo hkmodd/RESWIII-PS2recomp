@@ -908,7 +908,7 @@ namespace ps2recomp
                     return false;
                 }
 
-                auto ghidraFuncs = bridge.fetchAllFunctions(true, [](uint32_t c, uint32_t t) {
+                auto ghidraFuncs = bridge.fetchAllFunctions(false, [](uint32_t c, uint32_t t) {
                     if (c % 100 == 0 || c == t) {
                         std::cout << "\rFetching functions from Ghidra... " << c << "/" << t << std::flush;
                     }

@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <stdexcept>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <thread>
 #include <chrono>
 
@@ -94,6 +96,26 @@ std::string GhidraBridge::httpGet(const std::string& path) {
         throw std::runtime_error("GhidraBridge: not connected");
     }
 
+    // --- Local HTTP Cache Logic ---
+    std::string safe = path;
+    for (auto& c : safe) {
+        if (!std::isalnum(c)) c = '_';
+    }
+    
+    std::filesystem::path cacheDir = "output/.ghidra_cache";
+    if (!std::filesystem::exists(cacheDir)) {
+        std::filesystem::create_directories(cacheDir);
+    }
+    
+    std::filesystem::path cacheFile = cacheDir / (safe + ".json");
+    if (std::filesystem::exists(cacheFile)) {
+        std::ifstream ifs(cacheFile);
+        if (ifs.is_open()) {
+            return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        }
+    }
+    // ------------------------------
+
     int maxRetries = 3;
     for (int attempt = 0; attempt < maxRetries; ++attempt) {
         ++requestCount_;
@@ -104,6 +126,14 @@ std::string GhidraBridge::httpGet(const std::string& path) {
                 throw std::runtime_error("GhidraBridge: HTTP " +
                                          std::to_string(res->status) + " for " + path);
             }
+            
+            // --- Save to Cache ---
+            std::ofstream ofs(cacheFile);
+            if (ofs.is_open()) {
+                ofs << res->body;
+            }
+            // ---------------------
+
             return res->body;
         }
 
