@@ -63,6 +63,15 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["paddb"]  = &IRLifter::liftPADDB;
     dispatchTable_["pextuw"] = &IRLifter::liftPEXTUW;
     dispatchTable_["pcpyld"] = &IRLifter::liftPCPYLD;
+    dispatchTable_["pextlh"] = &IRLifter::liftPEXTLH;
+    dispatchTable_["pextuh"] = &IRLifter::liftPEXTUH;
+    dispatchTable_["pextlb"] = &IRLifter::liftPEXTLB;
+    dispatchTable_["pextub"] = &IRLifter::liftPEXTUB;
+    dispatchTable_["ppacb"]  = &IRLifter::liftPPACB;
+    dispatchTable_["ppacw"]  = &IRLifter::liftPPACW;
+    dispatchTable_["psllw"]  = &IRLifter::liftPSLLW;
+    dispatchTable_["psrlw"]  = &IRLifter::liftPSRLW;
+    dispatchTable_["psraw"]  = &IRLifter::liftPSRAW;
     // Multiply / Divide
     dispatchTable_["mult"]   = &IRLifter::liftMULT;
     dispatchTable_["multu"]  = &IRLifter::liftMULTU;

@@ -143,6 +143,26 @@ bool GhidraBridge::connect() {
         }
 
         connected_ = true;
+
+        try {
+            auto segs = fetchSegments();
+            uint32_t minAddr = 0xFFFFFFFF;
+            uint32_t maxAddr = 0;
+            for (const auto& s : segs) {
+                if (s.startAddr < minAddr) minAddr = s.startAddr;
+                if (s.endAddr > maxAddr) maxAddr = s.endAddr;
+            }
+            printf("[GHIDRA BRIDGE] Connected to program: %s\n", programName_.c_str());
+            if (segs.empty()) {
+                printf("[GHIDRA BRIDGE] Total memory range / Segments: 0 segments found.\n");
+            } else {
+                printf("[GHIDRA BRIDGE] Total memory range / Segments: %zu segments, range 0x%08X - 0x%08X\n", segs.size(), minAddr, maxAddr);
+            }
+        } catch (...) {
+            printf("[GHIDRA BRIDGE] Connected to program: %s\n", programName_.c_str());
+            printf("[GHIDRA BRIDGE] Total memory range / Segments: failed to fetch segments.\n");
+        }
+
         return true;
     } catch (const std::exception& e) {
         connected_ = false;

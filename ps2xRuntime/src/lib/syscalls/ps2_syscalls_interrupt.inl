@@ -272,9 +272,12 @@ static void interruptWorkerMain(uint8_t *rdram, PS2Runtime *runtime)
 
     while (runtime != nullptr && !runtime->isStopRequested())
     {
+        const auto loopNow = clock::now();
+        if (loopNow < nextTick)
         {
+            auto sleepDuration = nextTick - loopNow;
             std::unique_lock<std::mutex> lock(g_irq_worker_mutex);
-            if (g_irq_worker_cv.wait_until(lock, nextTick, []()
+            if (g_irq_worker_cv.wait_for(lock, sleepDuration, []()
                                            { return g_irq_worker_stop.load(std::memory_order_acquire); }))
             {
                 break;

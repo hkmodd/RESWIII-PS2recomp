@@ -366,4 +366,87 @@ void IRLifter::liftPCPYLD(IRFunction& func, IRBasicBlock& bb,
     emitGPRWrite(func, bb, f.rd, vid, instr.addr);
 }
 
+// ── MMI Additions (Pack/Unpack/Shift) ───────────────────────────────────────
+
+void IRLifter::liftPEXTLH(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_PEXTLH, IRType::I128, rs, rt, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
+void IRLifter::liftPEXTUH(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_PEXTUH, IRType::I128, rs, rt, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
+void IRLifter::liftPEXTLB(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_PEXTLB, IRType::I128, rs, rt, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
+void IRLifter::liftPEXTUB(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_PEXTUB, IRType::I128, rs, rt, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
+void IRLifter::liftPPACB(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_PPACB, IRType::I128, rs, rt, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
+void IRLifter::liftPPACW(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_PPACW, IRType::I128, rs, rt, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
+void IRLifter::liftPSLLW(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto sa = emitConst32(func, bb, f.sa);
+    auto inst = makeBinaryOp(func, IROp::IR_PSLLW, IRType::I128, rt, sa, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
+void IRLifter::liftPSRLW(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto sa = emitConst32(func, bb, f.sa);
+    auto inst = makeBinaryOp(func, IROp::IR_PSRLW, IRType::I128, rt, sa, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
+void IRLifter::liftPSRAW(IRFunction& func, IRBasicBlock& bb, const GhidraInstruction& instr, const MIPSFields& f) {
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto sa = emitConst32(func, bb, f.sa);
+    auto inst = makeBinaryOp(func, IROp::IR_PSRAW, IRType::I128, rt, sa, instr.addr);
+    ValueId vid = inst.result.id;
+    bb.instructions.push_back(std::move(inst));
+    emitGPRWrite(func, bb, f.rd, vid, instr.addr);
+}
+
 } // namespace ps2recomp

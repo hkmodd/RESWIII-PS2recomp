@@ -901,7 +901,7 @@ namespace ps2recomp
         {
             if (m_useIR) {
                 std::cout << "Using IR lifting pipeline (GhidraBridge -> IRLifter -> CppEmitter)\n";
-                GhidraBridge bridge("localhost", 8192);
+                GhidraBridge bridge("localhost", 8193);
                 if (!bridge.connect()) {
                     std::cerr << "[ERROR] Failed to connect to GhidraBridge on localhost:8192. Ensure Ghidra is running with the GhydraMCP server.\n";
                     return false;
@@ -927,12 +927,17 @@ namespace ps2recomp
 
                         IRLifter lifter;
                         auto irFunc = lifter.liftFunction(gf, disasm);
+                        if (!irFunc) {
+                            failedCount++;
+                            continue;
+                        }
+
                         if (gf.isThunk) {
-                            irFunc.name += "_thunk";
+                            irFunc->name += "_thunk";
                         }
                         
                         CppEmitter emitter;
-                        std::string code = emitter.emitFunction(irFunc);
+                        std::string code = emitter.emitFunction(*irFunc);
                         
                         if (gf.isThunk) {
                             code = "// THUNK\n" + code;
@@ -1033,12 +1038,14 @@ namespace ps2recomp
                     combinedOutput << code << "\n\n";
                 }
 
-                fs::path outputPath = fs::path(m_config.outputPath) / "ps2_recompiled_functions.cpp";
-                if (!writeToFile(outputPath.string(), combinedOutput.str()))
+                std::string outPathStr = "starwars_recompiled.cpp";
+                std::cout << "\n[FILE I/O] Writing " << m_irGeneratedFunctions.size() << " translated functions to " << outPathStr << "...\n";
+                
+                if (!writeToFile(outPathStr, combinedOutput.str()))
                 {
-                    throw std::runtime_error("Failed to write combined output for IR pipeline: " + outputPath.string());
+                    throw std::runtime_error("Failed to write combined output for IR pipeline: " + outPathStr);
                 }
-                std::cout << "Wrote IR recompiled combined output to: " << outputPath << std::endl;
+                std::cout << "[FILE I/O] Dump completed.\n";
                 return;
             }
 

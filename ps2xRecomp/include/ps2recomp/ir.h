@@ -502,6 +502,8 @@ enum class IROp : uint16_t {
     // --- Parallel Add/Sub Bytes-Halfwords ---
     IR_PADSBH,          // Parallel Add/Sub Bytes-Halfwords
 
+
+
     // --- Parallel Shift ---
     IR_PSLLW,           // Parallel Shift Left Logical Word
     IR_PSLLH,           // Parallel Shift Left Logical Halfword

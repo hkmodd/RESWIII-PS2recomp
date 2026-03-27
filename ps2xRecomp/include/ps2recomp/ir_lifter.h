@@ -216,6 +216,15 @@ private:
     void liftPADDB (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
     void liftPEXTUW(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
     void liftPCPYLD(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPEXTLH(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPEXTUH(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPEXTLB(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPEXTUB(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPPACB (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPPACW (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPSLLW (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPSRLW (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftPSRAW (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
 
     // Memory loads
     void liftLB    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);

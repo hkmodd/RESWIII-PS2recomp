@@ -250,12 +250,37 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "_mm_add_epi8(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
             break;
         case IROp::IR_PEXTUW:
-            // Placeholder for PEXTUW macro binding
             out << "MMI_PEXTUW(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
             break;
         case IROp::IR_PCPYLD:
-            // Placeholder for PCPYLD macro binding
             out << "MMI_PCPYLD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_PEXTLH:
+            out << "_mm_unpacklo_epi16(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")"; // rt, rs
+            break;
+        case IROp::IR_PEXTUH:
+            out << "_mm_unpackhi_epi16(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_PEXTLB:
+            out << "_mm_unpacklo_epi8(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_PEXTUB:
+            out << "_mm_unpackhi_epi8(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_PPACB:
+            out << "MMI_PPACB(ctx, " << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_PPACW:
+            out << "MMI_PPACW(ctx, " << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_PSLLW:
+            out << "_mm_sll_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
+            break;
+        case IROp::IR_PSRLW:
+            out << "_mm_srl_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
+            break;
+        case IROp::IR_PSRAW:
+            out << "_mm_sra_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
             break;
         default:
             out << "// TODO: Unimplemented instruction (" << getOpString(inst.op) << ")";
