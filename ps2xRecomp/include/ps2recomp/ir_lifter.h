@@ -19,6 +19,7 @@
 
 #include "ir.h"
 #include "ghidra_types.h"
+#include "jump_resolver.h"
 
 #include <cstdint>
 #include <string>
@@ -70,6 +71,7 @@ public:
     std::optional<ir::IRFunction> liftFunction(
         const GhidraFunction& funcInfo,
         const std::vector<GhidraInstruction>& disasm,
+        const std::vector<ResolvedJumpTable>* resolvedJumps = nullptr,
         ProgressCallback progress = nullptr);
 
     // ── Configuration ───────────────────────────────────────────────────
@@ -289,6 +291,7 @@ private:
     bool           emitComments_   = true;
     bool           foldDelaySlots_ = true;
     IRLifterStats  stats_;
+    const std::vector<ResolvedJumpTable>* currentResolvedJumps_ = nullptr;
 };
 
 } // namespace ps2recomp

@@ -141,6 +141,18 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_JUMP:
             out << "goto bb_" << inst.branchTarget;
             break;
+        case IROp::IR_JUMP_INDIRECT:
+            out << "ctx->pc = " << getValueName(inst.operands[0]) << "; return; /* Unresolved Indirect Jump Fallback */";
+            break;
+        case IROp::IR_SWITCH:
+            out << "switch (" << getValueName(inst.operands[0]) << ") {\n";
+            for (size_t i = 0; i < inst.switchTargets.size(); ++i) {
+                out << emitIndent(indentLevel + 1) << "case 0x" << std::hex << inst.switchValues[i] << std::dec 
+                    << ": goto bb_" << inst.switchTargets[i] << ";\n";
+            }
+            out << emitIndent(indentLevel + 1) << "default: ctx->pc = " << getValueName(inst.operands[0]) << "; return; // Bounds limit / Fallback\n";
+            out << emitIndent(indentLevel) << "}";
+            break;
         case IROp::IR_CALL:
             if (!inst.operands.empty()) {
                 out << "ctx->pc = " << getValueName(inst.operands[0]) << "; // function CALL (stub)";

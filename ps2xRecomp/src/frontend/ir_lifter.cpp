@@ -211,12 +211,14 @@ std::unordered_set<uint32_t> IRLifter::findBlockBoundaries(
 std::optional<IRFunction> IRLifter::liftFunction(
         const GhidraFunction& funcInfo,
         const std::vector<GhidraInstruction>& disasm,
+        const std::vector<ResolvedJumpTable>* resolvedJumps,
         ProgressCallback progress) {
 
     if (disasm.empty()) return std::nullopt;
 
     resetStats();
     addrToBlockIndex_.clear();
+    currentResolvedJumps_ = resolvedJumps;
 
     IRFunction func;
     func.name = funcInfo.name;

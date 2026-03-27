@@ -6,6 +6,7 @@
 #include "ps2_runtime_calls.h"
 #include "ps2recomp/ghidra_bridge.h"
 #include "ps2recomp/ir_lifter.h"
+#include "ps2recomp/jump_resolver.h"
 #include "../backend/cpp_emitter.h"
 #include <iostream>
 #include <fstream>
@@ -925,8 +926,15 @@ namespace ps2recomp
                             continue;
                         }
 
+                        GhidraFunctionDetail detail;
+                        detail.info = gf;
+                        detail.disasm = disasm;
+                        
+                        JumpResolver resolver(bridge);
+                        std::vector<ResolvedJumpTable> resolvedJumps = resolver.resolveFunction(detail);
+
                         IRLifter lifter;
-                        auto irFunc = lifter.liftFunction(gf, disasm);
+                        auto irFunc = lifter.liftFunction(gf, disasm, &resolvedJumps);
                         if (!irFunc) {
                             failedCount++;
                             continue;

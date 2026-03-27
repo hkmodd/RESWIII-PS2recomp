@@ -146,13 +146,41 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
         ret.srcAddress = instr.addr;
         bb.instructions.push_back(std::move(ret));
     } else {
-        // Indirect jump — emit as indirect branch
-        IRInst ibr;
-        ibr.op = IROp::IR_BRANCH;
-        ibr.srcAddress = instr.addr;
-        ibr.operands = {rs};
-        ibr.comment = "indirect jump (JR)";
-        bb.instructions.push_back(std::move(ibr));
+        // Indirect jump — check if it's a resolved jump table
+        bool resolved = false;
+        if (currentResolvedJumps_) {
+            for (const auto& jt : *currentResolvedJumps_) {
+                if (jt.jrAddr == instr.addr) {
+                    IRInst sw;
+                    sw.op = IROp::IR_SWITCH;
+                    sw.srcAddress = instr.addr;
+                    sw.operands = {rs}; // Usually we'd want the index reg, but we'll use the target address for now
+                    sw.comment = "Switch statement (resolved)";
+                    // Save cases
+                    for (const auto& case_val : jt.entries) {
+                        uint32_t targetIdx = getOrCreateBlock(func, case_val.targetAddr);
+                        sw.switchTargets.push_back(targetIdx);
+                        sw.switchValues.push_back(case_val.caseIndex);
+                        
+                        bb.successors.push_back(targetIdx);
+                        func.blocks[targetIdx].predecessors.push_back(bb.index);
+                    }
+                    bb.instructions.push_back(std::move(sw));
+                    resolved = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!resolved) {
+            // Emitting indirect branch
+            IRInst ibr;
+            ibr.op = IROp::IR_JUMP_INDIRECT;
+            ibr.srcAddress = instr.addr;
+            ibr.operands = {rs};
+            ibr.comment = "indirect jump (JR)";
+            bb.instructions.push_back(std::move(ibr));
+        }
     }
 }
 

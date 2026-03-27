@@ -348,7 +348,11 @@ enum class IROp : uint16_t {
     IR_BRANCH,          // Conditional branch: (cond, target_bb)
     IR_JUMP,            // Unconditional jump to known target: (target_bb)
     IR_JUMP_INDIRECT,   // Indirect jump via register: (addr_value)
-                        // JR (non-$ra), jump tables
+                        // JR (non-$ra) fallbacks
+    IR_SWITCH,          // Switch statement for jump tables.
+                        // operands[0]: index register
+                        // switchTargets: vector of target basic block indices
+                        // switchValues: vector of match values
     IR_CALL,            // Function call: (target_addr, args...)
                         // JAL, JALR
     IR_RETURN,          // Function return: JR $ra
@@ -721,6 +725,7 @@ inline const char* irOpName(IROp op) {
         case IROp::IR_BRANCH:       return "BRANCH";
         case IROp::IR_JUMP:         return "JUMP";
         case IROp::IR_JUMP_INDIRECT: return "JUMP_INDIRECT";
+        case IROp::IR_SWITCH:       return "SWITCH";
         case IROp::IR_CALL:         return "CALL";
         case IROp::IR_RETURN:       return "RETURN";
         case IROp::IR_SYSCALL:      return "SYSCALL";
@@ -990,6 +995,10 @@ struct IRInst {
     // --- Branch metadata ---
     uint32_t                branchTarget;   // Target BB index or MIPS address
     bool                    branchLikely;   // MIPS "likely" branch (annul delay slot if not taken)
+
+    // --- Switch metadata (for IR_SWITCH) ---
+    std::vector<uint32_t>   switchTargets;  // Target BB indices for switch cases
+    std::vector<uint32_t>   switchValues;   // Match values for each switch case
 
     // --- PHI metadata ---
     // For IR_PHI: operands[2*i] = value from predecessor, operands[2*i+1] is unused
