@@ -1034,30 +1034,60 @@ namespace ps2recomp
         try
         {
             if (m_useIR) {
-                std::stringstream combinedOutput;
-                combinedOutput << "#include \"ps2_recompiled_functions.h\"\n\n";
-                combinedOutput << "#include \"ps2_runtime_macros.h\"\n";
-                combinedOutput << "#include \"ps2_runtime.h\"\n";
-                combinedOutput << "#include \"ps2_recompiled_stubs.h\"\n";
-                combinedOutput << "#include \"ps2_syscalls.h\"\n";
-                combinedOutput << "#include \"ps2_stubs.h\"\n";
-                combinedOutput << "#include <emmintrin.h>\n";
-                combinedOutput << "#ifdef _DEBUG\n";
-                combinedOutput << "#include \"ps2_log.h\"\n";
-                combinedOutput << "#endif\n\n";
+                fs::path outDir = m_config.outputPath;
+                fs::create_directories(outDir);
+
+                const size_t FUNC_PER_CHUNK = 2000;
+                size_t currentChunk = 0;
+                size_t funcInChunk = 0;
+                
+                std::stringstream chunkOutput;
+
+                auto writeHeader = [&]() {
+                    chunkOutput.str("");
+                    chunkOutput.clear();
+                    chunkOutput << "#include \"ps2_recompiled_functions.h\"\n\n";
+                    chunkOutput << "#include \"ps2_runtime_macros.h\"\n";
+                    chunkOutput << "#include \"ps2_runtime.h\"\n";
+                    chunkOutput << "#include \"ps2_recompiled_stubs.h\"\n";
+                    chunkOutput << "#include \"ps2_syscalls.h\"\n";
+                    chunkOutput << "#include \"ps2_stubs.h\"\n";
+                    chunkOutput << "#include <emmintrin.h>\n";
+                    chunkOutput << "#ifdef _DEBUG\n";
+                    chunkOutput << "#include \"ps2_log.h\"\n";
+                    chunkOutput << "#endif\n\n";
+                };
+
+                auto flushChunk = [&]() {
+                    if (funcInChunk == 0) return;
+                    char buf[256];
+                    snprintf(buf, sizeof(buf), "starwars_%03zu.cpp", currentChunk);
+                    fs::path chunkPath = outDir / buf;
+                    if (!writeToFile(chunkPath.string(), chunkOutput.str())) {
+                        throw std::runtime_error("Failed to write IR chunk: " + chunkPath.string());
+                    }
+                    std::cout << "[FILE I/O] Written chunk " << currentChunk << " with " << funcInChunk << " functions to " << chunkPath.filename().string() << "\n";
+                    currentChunk++;
+                    funcInChunk = 0;
+                    writeHeader();
+                };
+
+                writeHeader();
+                std::cout << "\n[FILE I/O] Writing " << m_irGeneratedFunctions.size() << " translated functions in chunks...\n";
 
                 for (const auto& [addr, code] : m_irGeneratedFunctions) {
-                    combinedOutput << code << "\n\n";
+                    chunkOutput << code << "\n\n";
+                    funcInChunk++;
+                    if (funcInChunk >= FUNC_PER_CHUNK) {
+                        flushChunk();
+                    }
+                }
+                
+                if (funcInChunk > 0) {
+                    flushChunk();
                 }
 
-                std::string outPathStr = "starwars_recompiled.cpp";
-                std::cout << "\n[FILE I/O] Writing " << m_irGeneratedFunctions.size() << " translated functions to " << outPathStr << "...\n";
-                
-                if (!writeToFile(outPathStr, combinedOutput.str()))
-                {
-                    throw std::runtime_error("Failed to write combined output for IR pipeline: " + outPathStr);
-                }
-                std::cout << "[FILE I/O] Dump completed.\n";
+                std::cout << "[FILE I/O] Split dump completed into " << currentChunk << " files.\n";
                 return;
             }
 

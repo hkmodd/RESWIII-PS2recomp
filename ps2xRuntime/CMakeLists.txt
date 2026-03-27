@@ -40,6 +40,12 @@ file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/*.cpp"
 )
 
+# Grab all the chunked decompiled .cpp files from the output directory
+file(GLOB STARWARS_CHUNKS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../output/starwars_*.cpp"
+)
+list(APPEND RUNNER_SRC_FILES ${STARWARS_CHUNKS})
+
 set(RUNNER_MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/main.cpp")
 set(ROOT_MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 
