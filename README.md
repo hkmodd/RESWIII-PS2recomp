@@ -14,47 +14,24 @@ Also check our [WIKI](https://github.com/ran-j/PS2Recomp/wiki)
 
 This project statically recompiles PS2 ELF binaries into C++ and provides a runtime to execute the generated code.
 
-### Modules
+### New Architecture (IR Pipeline via GhidraBridge)
 
-* `ps2xAnalyzer`: scans ELF/functions and writes TOML config (`stubs`, `skip`, instruction patches).
-* `ps2xRecomp`: reads TOML + ELF, decodes R5900 instructions, and generates C++ output.
-* `ps2xRuntime`: hosts memory, function registration, syscall dispatch, and hardware stubs.
+The core architecture of `RESWIII-PS2recomp` has radically evolved. The legacy native C++ ELF analyzer logic has been deprecated and replaced by a powerful 4-layer pipeline that queries the Ghidra decompiler dynamically:
 
-### Features
+* **Extraction Layer (`GhidraBridge`)**: Connects directly to the Ghidra SRE (via the GhydraMCP plugin on port `8192` or `8193`) using REST APIs. It pulls strictly organized function boundaries, thunks, and disassembly blocks. To prevent extreme network latency, this layer implements a Local FileSystem Cache (`.ghidra_cache`).
+* **Control Flow Analysis (`JumpResolver`)**: Intelligently scans MIPS R5900 branches and jumps (`jr ra`, switch-cases, dynamic jump tables) to statically resolve abstract control flow ahead-of-time.
+* **Lifting Layer (`IRLifter`)**: Abandons 1:1 C++ translation by elevating the raw MIPS R5900 asm into a highly abstract Intermediate Representation (IR). This unlocks dataflow optimization, loop unrolling, and future hardware detachment.
+* **Code Generation (`CppEmitter`)**: Compiles the mapped IR down to clean, readable, and highly optimized modern C++ targeting the underlying PS2 Context struct.
+* **Runtime (`ps2xRuntime`)**: The beating heart of the execution. Features guest-virtual memory models, a `JumpResolver`-compliant dispatch system, dynamic syscall interceptors, and hardware bindings (MMI/VU).
 
-* Translates MIPS R5900 instructions to C++ code
-* PS2-specific MMI and VU0 macro support.
-* Single-file or multi-file output.
-* Configurable stubs, skips, and instruction patches.
-* Instruction-driven syscall handling.
-
-### How It Works
-PS2Recomp works by:
-
-* Parsing a PS2 ELF file to extract functions, symbols, and relocations
-* Decoding the MIPS R5900 instructions in each function
-* Translating those instructions to equivalent C++ code
-* Generating a runtime that can execute the recompiled code
-
-The translated code is very literal, with each MIPS instruction mapping to a C++ operation. For example, `addiu $r4, $r4, 0x20` becomes `ctx->r4 = ADD32(ctx->r4, 0X20);`.
-
-### Current Behavior
-
-* `stubs` entries generate wrappers that call known runtime syscall/stub handlers by name.
-* `stubs` also supports address bindings with `handler@0xADDRESS` for stripped games (for example `sceCdRead@0x00123456`).
-* Address bindings also support generic return handlers for triage: `ret0`, `ret1`, `reta0`.
-* Recompiler now tries relocation-symbol auto-binding at callsites (`J/JAL`) before raw address dispatch; when relocation symbol is known (for example `sceCdRead`), it can call runtime handlers without manual address mapping.
-* Recompiler discovers additional internal static entry targets and emits `entry_...` wrappers for those addresses.
-* For unresolved static `J/JAL` sites, generated code falls back to `runtime->lookupFunction(0x...)`.
-* `skip` entries are not recompiled and generate explicit `ps2_stubs::TODO_NAMED(...)` wrappers.
-* Recompiled `SYSCALL` now calls `runtime->handleSyscall(...)` with the encoded syscall immediate.
-* Runtime syscall dispatch tries encoded syscall ID first, then falls back to `$v1`.
+*Note: The historical `ps2xAnalyzer` tool is now kept purely as a fallback for ELFs loaded outside the Ghidra ecosystem.*
 
 ### Requirements
 
 * CMake 3.20+
 * C++20 compiler (currently tested mainly with MSVC)
 * SSE4/AVX host support for some vector paths
+* **Ghidra SRE** with the **GhydraMCP** plugin running on port `8192` or `8193`.
 
 ### Build
 
@@ -62,41 +39,31 @@ The translated code is very literal, with each MIPS instruction mapping to a C++
 git clone --recurse-submodules https://github.com/ran-j/PS2Recomp.git
 cd PS2Recomp
 
-cmake -S . -B out/build
-cmake --build out/build --config Debug
+mkdir build_clang
+cd build_clang
+cmake -G "Visual Studio 17 2022" -T ClangCL ..
+cmake --build . --target ps2_recomp --config Release
 ```
 
 ### Usage
 
-Preferred workflow for retail or stripped games:
+**The new Live-Ghidra Workflow (Preferred):**
 
-1. Open the ELF in Ghidra.
-2. Run `ps2xRecomp/tools/ghidra/ExportPS2Functions.java`.
-3. Use the exported TOML and CSV map.
-4. Recompile with the exported TOML:
-
-```bash
-./ps2_recomp config.toml
-```
-
-Fallback workflow for quick local experiments or ELFs with debug symbol :
+1. Keep your PS2 ELF open in **Ghidra**.
+2. Start the GhydraMCP Server (ensure the GUI server is green and listening).
+3. Directly run the recompiler using the `--use-ir` flag (no manual Java exports required!).
 
 ```bash
-./ps2_analyzer your_game.elf config.toml
+./ps2_recomp config.toml --use-ir
 ```
 
-Use this only when you do not have a Ghidra project yet. The native analyzer is faster to start, but it is less accurate on stripped retail games and more likely to miss internal callable entry points.
-
-See the [Ghidra Workflow](ps2xAnalyzer/Readme.md#3-ghidra-integration-for-retail-and-stripped-games-preferred) for the recommended path.
-
-Then build generated output and link with `ps2xRuntime`.
+*Note: The old mandate of running the Java script `ExportPS2Functions.java` inside Ghidra is now entirely obsolete! The `GhidraBridge` fetches functions and disassembled instructions automatically upon execution.*
 
 ### Configuration
 
 Main fields in `config.toml`:
 
 * `general.input`: source ELF path.
-* `general.ghidra_output`: recommended function map CSV exported from Ghidra.
 * `general.output`: generated C++ output folder.
 * `general.single_file_output`: one combined cpp or one file per function.
 * `general.patch_syscalls`: apply configured patches to `SYSCALL` instructions (`false` recommended).
@@ -105,46 +72,6 @@ Main fields in `config.toml`:
 * `general.stubs`: names to force as stubs. Also accepts `handler@0xADDRESS` to bind a stripped function address directly to a runtime syscall/stub handler. Includes generic handlers `ret0`, `ret1`, `reta0`.
 * `general.skip`: names to force as skipped wrappers.
 * `patches.instructions`: raw instruction replacements by address.
-
-Address binding for stripped ELFs:
-
-* Use `handler@0xADDRESS` inside `general.stubs` to map a stripped function start directly to a runtime handler.
-* Example: `sceCdRead@0x00123456` binds function start `0x00123456` to `ps2_stubs::sceCdRead(...)`.
-* Generic temporary handlers are available: `ret0@0xADDR`, `ret1@0xADDR`, `reta0@0xADDR`.
-* Before manual binding, prefer recompilation from a Ghidra-exported TOML/CSV first. The extra boundaries and synthetic entry points are usually more important than manual early triage.
-* The address must be the function start in that exact ELF build.
-* Addresses are not portable across different games/regions/builds.
-* The handler name must exist in runtime call lists (`PS2_SYSCALL_LIST` or `PS2_STUB_LIST`).
-
-Example:
-
-```toml
-[general]
-input = "path/to/game.elf"
-ghidra_output = ""
-output = "output/"
-
-single_file_output = true
-patch_syscalls = false
-patch_cop0 = true
-patch_cache = true
-
-stubs = ["printf", "malloc", "free"]
-
-# stripped function binding by address:
-# stubs = ["sceCdRead@0x00123456", "SifLoadModule@0x00127890"]
-# temporary return handlers:
-# stubs = ["ret0@0x001D9410", "ret1@0x001D5BC8", "reta0@0x0024B7C0"]
-# mixed example:
-# stubs = ["printf", "sceCdRead@0x00123456", "SifLoadModule@0x00127890"]
-
-skip = ["abort", "exit"]
-
-[patches]
-instructions = [
-  { address = "0x100004", value = "0x00000000" }
-]
-```
 
 ### Runtime
 
@@ -168,20 +95,6 @@ API:
 * Header: `ps2xRuntime/include/game_overrides.h`
 * Register macro: `PS2_REGISTER_GAME_OVERRIDE(name, elfName, entry, crc32, applyFn)`
 * Direct bind helper: `ps2_game_overrides::bindAddressHandler(runtime, addr, "handler")`
-
-Use Game Override modules when:
-
-* You need per-game/per-build routing or patches without polluting global behavior.
-* You need to bind many addresses, or install custom replacement logic for a specific title.
-
-#### Recommended Iteration Loop
-
-1. Run with minimal config and no aggressive skipping.
-2. Fix hard blockers first (`function not found`, syscall TODO, critical IO stubs).
-3. Use temporary return stubs only to classify call importance.
-4. Promote temporary fixes to real implementations.
-5. Move per-game hacks into game overrides keyed by ELF metadata.
-6. Re-test from cold boot after each batch.
 
 ### Limitations
 
