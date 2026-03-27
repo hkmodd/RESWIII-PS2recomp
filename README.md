@@ -1,4 +1,8 @@
-## PS2Recomp: PlayStation 2 Static Recompiler (Experimental)
+## RESWIII - PS2Recomp fork: PlayStation 2 Static Recompiler (Experimental)
+
+<p align="center">
+<img height="356" alt="RESWIIIicon" src="https://github.com/user-attachments/assets/0a3b88a3-7c9f-490b-9333-5846161f259a" />
+</p>
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/JQ8mawxUEf)
 
