@@ -120,7 +120,7 @@ void IRLifter::liftJ(IRFunction& func, IRBasicBlock& bb,
     br.op = IROp::IR_BRANCH;
     br.srcAddress = instr.addr;
     br.branchTarget = tgtIdx;
-    emitTerminator(func, bb, std::move(br));
+    emitTerminator(func, bb, std::move(br), false, false);
 
     bb.successors.push_back(tgtIdx);
     func.blocks[tgtIdx].predecessors.push_back(bb.index);
@@ -151,7 +151,7 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
         IRInst ret;
         ret.op = IROp::IR_RETURN;
         ret.srcAddress = instr.addr;
-        emitTerminator(func, bb, std::move(ret));
+        emitTerminator(func, bb, std::move(ret), false, false);
     } else {
         // Indirect jump — check if it's a resolved jump table
         bool resolved = false;
@@ -177,7 +177,7 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
                             func.blocks[targetIdx].predecessors.push_back(bb.index);
                         }
                     }
-                    emitTerminator(func, bb, std::move(sw));
+                    emitTerminator(func, bb, std::move(sw), false, false);
                     resolved = true;
                     break;
                 }
@@ -191,7 +191,7 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
             ibr.srcAddress = instr.addr;
             ibr.operands = {rs};
             ibr.comment = "indirect jump (JR)";
-            emitTerminator(func, bb, std::move(ibr));
+            emitTerminator(func, bb, std::move(ibr), false, false);
         }
     }
 }

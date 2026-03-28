@@ -157,11 +157,12 @@ private:
 
     uint32_t getOrCreateBlock(ir::IRFunction& func, uint32_t addr);
 
-    void emitTerminator(ir::IRFunction& func, ir::IRBasicBlock& bb, ir::IRInst termInst, bool isLikely = false);
+    void inlineDelaySlot(ir::IRFunction& func, ir::IRBasicBlock& bb, bool isLikely);
+    void emitTerminator(ir::IRFunction& func, ir::IRBasicBlock& bb, ir::IRInst termInst, bool isLikely = false, bool hasFallthrough = true);
 
-    std::optional<ir::IRInst> pendingTerminator_;
-    uint32_t delaySlotWait_ = 0;
-    bool pendingIsLikely_ = false;
+    const std::vector<GhidraInstruction>* currentDisasm_ = nullptr;
+    size_t currentInstrIndex_ = 0;
+    std::unordered_set<size_t> skipInstructionIndices_;
 
     // ── Individual instruction lifters ──────────────────────────────────
     // Integer ALU

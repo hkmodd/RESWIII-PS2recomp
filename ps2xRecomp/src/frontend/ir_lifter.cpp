@@ -251,11 +251,15 @@ std::optional<IRFunction> IRLifter::liftFunction(
             ? addrToBlockIndex_[disasm[0].addr] : 0;
     }
 
-    pendingTerminator_.reset();
-    delaySlotWait_ = 0;
-    pendingIsLikely_ = false;
+    currentDisasm_ = &disasm;
+    skipInstructionIndices_.clear();
 
     for (uint32_t i = 0; i < disasm.size(); ++i) {
+        if (skipInstructionIndices_.count(i)) {
+            continue;
+        }
+
+        currentInstrIndex_ = i;
         const auto& instr = disasm[i];
 
         // Switch to new block if this address starts one
@@ -295,33 +299,7 @@ std::optional<IRFunction> IRLifter::liftFunction(
             }
         }
 
-        if (delaySlotWait_ > 0) {
-            delaySlotWait_--;
-        } else if (pendingTerminator_.has_value()) {
-            if (pendingIsLikely_) {
-                IRInst endif;
-                endif.op = IROp::IR_END_LIKELY;
-                bb->instructions.push_back(std::move(endif));
-            }
-            bb->instructions.push_back(std::move(*pendingTerminator_));
-            pendingTerminator_.reset();
-            pendingIsLikely_ = false;
-        }
-
         if (progress) progress(i, stats_.totalInstructions);
-    }
-
-    // Flush any pending terminator at end of function
-    if (pendingTerminator_.has_value()) {
-        auto* bb = func.getBlock(currentBlockIdx);
-        if (bb) {
-            if (pendingIsLikely_) {
-                IRInst endif;
-                endif.op = IROp::IR_END_LIKELY;
-                bb->instructions.push_back(std::move(endif));
-            }
-            bb->instructions.push_back(std::move(*pendingTerminator_));
-        }
     }
 
     // Wire up fall-through edges between consecutive blocks
@@ -466,16 +444,53 @@ void IRLifter::liftUnhandled(IRFunction& func, IRBasicBlock& bb,
     bb.instructions.push_back(std::move(inst));
 }
 
-void IRLifter::emitTerminator(IRFunction& func, IRBasicBlock& bb, IRInst termInst, bool isLikely) {
-    pendingTerminator_ = std::move(termInst);
-    delaySlotWait_ = 1;
-    pendingIsLikely_ = isLikely;
-
+void IRLifter::inlineDelaySlot(ir::IRFunction& func, ir::IRBasicBlock& bb, bool isLikely) {
+    if (currentInstrIndex_ + 1 >= currentDisasm_->size()) return;
+    
+    const GhidraInstruction& delaySlotInst = (*currentDisasm_)[currentInstrIndex_ + 1];
+    MIPSFields f = decodeFields(delaySlotInst.rawBytes);
+    
     if (isLikely) {
-        IRInst ifLikely;
-        ifLikely.op = IROp::IR_IF_LIKELY;
-        ifLikely.operands = pendingTerminator_->operands; // Copy condition operand
-        bb.instructions.push_back(std::move(ifLikely));
+        ir::IRInst markIfLikely;
+        markIfLikely.op = ir::IROp::IR_IF_LIKELY;
+        bb.instructions.push_back(std::move(markIfLikely));
+    }
+    
+    // Dispatch delay slot instruction
+    auto handlerIt = dispatchTable_.find(delaySlotInst.mnemonic);
+    if (handlerIt != dispatchTable_.end()) {
+        (this->*(handlerIt->second))(func, bb, delaySlotInst, f);
+    } else {
+        liftUnhandled(func, bb, delaySlotInst, f);
+    }
+    
+    if (isLikely) {
+        ir::IRInst markEndLikely;
+        markEndLikely.op = ir::IROp::IR_END_LIKELY;
+        bb.instructions.push_back(std::move(markEndLikely));
+    }
+    
+    // Check if we should skip the delay slot in main processing loop
+    bool isBlockBoundary = (addrToBlockIndex_.find(delaySlotInst.addr) != addrToBlockIndex_.end());
+    if (!isBlockBoundary) {
+        skipInstructionIndices_.insert(currentInstrIndex_ + 1);
+    }
+}
+
+void IRLifter::emitTerminator(IRFunction& func, IRBasicBlock& bb, IRInst termInst, bool isLikely, bool hasFallthrough) {
+    inlineDelaySlot(func, bb, isLikely);
+    bb.instructions.push_back(std::move(termInst));
+
+    if (hasFallthrough && currentInstrIndex_ + 2 < currentDisasm_->size()) {
+        uint32_t fallAddr = (*currentDisasm_)[currentInstrIndex_ + 2].addr;
+        IRInst jmp;
+        jmp.op = IROp::IR_JUMP;
+        jmp.branchTarget = getOrCreateBlock(func, fallAddr);
+        jmp.srcMipsAddr = termInst.srcAddress;
+        bb.instructions.push_back(std::move(jmp));
+        
+        bb.successors.push_back(jmp.branchTarget);
+        func.blocks[jmp.branchTarget].predecessors.push_back(bb.index);
     }
 }
 
