@@ -10,7 +10,7 @@ using namespace ir;
 // Helper: emit a conditional branch (BEQ/BNE/BGEZ/etc.)
 void IRLifter::emitCondBranch(IRFunction& func, IRBasicBlock& bb,
                                IROp cmpOp, ValueId lhs, ValueId rhs,
-                               uint32_t targetAddr, uint32_t srcAddr) {
+                               uint32_t targetAddr, uint32_t srcAddr, bool isLikely) {
     auto cmp = makeBinaryOp(func, cmpOp, IRType::I1, lhs, rhs, srcAddr);
     ValueId cId = cmp.result.id;
     bb.instructions.push_back(std::move(cmp));
@@ -24,7 +24,8 @@ void IRLifter::emitCondBranch(IRFunction& func, IRBasicBlock& bb,
     br.srcAddress = srcAddr;
     br.operands = {cId};
     br.branchTarget = tgtIdx;
-    bb.instructions.push_back(std::move(br));
+    br.branchLikely = isLikely;
+    emitTerminator(func, bb, std::move(br), isLikely);
 
     bb.successors.push_back(tgtIdx);
     func.blocks[tgtIdx].predecessors.push_back(bb.index);
@@ -53,14 +54,19 @@ void IRLifter::liftBNE(IRFunction& func, IRBasicBlock& bb,
 void IRLifter::liftBEQL(IRFunction& func, IRBasicBlock& bb,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    // Branch-likely: same IR shape, delay-slot nullification handled elsewhere
-    liftBEQ(func, bb, instr, f);
+    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    uint32_t target = computeBranchTarget(instr.addr, f.simm16);
+    emitCondBranch(func, bb, IROp::IR_EQ, rs, rt, target, instr.addr, true);
 }
 
 void IRLifter::liftBNEL(IRFunction& func, IRBasicBlock& bb,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    liftBNE(func, bb, instr, f);
+    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    uint32_t target = computeBranchTarget(instr.addr, f.simm16);
+    emitCondBranch(func, bb, IROp::IR_NE, rs, rt, target, instr.addr, true);
 }
 
 // ── BGEZ / BGTZ / BLEZ / BLTZ ──────────────────────────────────────────────
@@ -114,7 +120,7 @@ void IRLifter::liftJ(IRFunction& func, IRBasicBlock& bb,
     br.op = IROp::IR_BRANCH;
     br.srcAddress = instr.addr;
     br.branchTarget = tgtIdx;
-    bb.instructions.push_back(std::move(br));
+    emitTerminator(func, bb, std::move(br));
 
     bb.successors.push_back(tgtIdx);
     func.blocks[tgtIdx].predecessors.push_back(bb.index);
@@ -133,7 +139,7 @@ void IRLifter::liftJAL(IRFunction& func, IRBasicBlock& bb,
     call.srcAddress = instr.addr;
     call.branchTarget = target; // store call target address
     call.comment = "JAL";
-    bb.instructions.push_back(std::move(call));
+    emitTerminator(func, bb, std::move(call));
 }
 
 void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
@@ -145,7 +151,7 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
         IRInst ret;
         ret.op = IROp::IR_RETURN;
         ret.srcAddress = instr.addr;
-        bb.instructions.push_back(std::move(ret));
+        emitTerminator(func, bb, std::move(ret));
     } else {
         // Indirect jump — check if it's a resolved jump table
         bool resolved = false;
@@ -171,7 +177,7 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
                             func.blocks[targetIdx].predecessors.push_back(bb.index);
                         }
                     }
-                    bb.instructions.push_back(std::move(sw));
+                    emitTerminator(func, bb, std::move(sw));
                     resolved = true;
                     break;
                 }
@@ -185,7 +191,7 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
             ibr.srcAddress = instr.addr;
             ibr.operands = {rs};
             ibr.comment = "indirect jump (JR)";
-            bb.instructions.push_back(std::move(ibr));
+            emitTerminator(func, bb, std::move(ibr));
         }
     }
 }
@@ -203,7 +209,7 @@ void IRLifter::liftJALR(IRFunction& func, IRBasicBlock& bb,
     call.srcAddress = instr.addr;
     call.operands = {rs};
     call.comment = "JALR (indirect call)";
-    bb.instructions.push_back(std::move(call));
+    emitTerminator(func, bb, std::move(call));
 }
 
 // ── System instructions ─────────────────────────────────────────────────────

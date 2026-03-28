@@ -371,6 +371,9 @@ enum class IROp : uint16_t {
     IR_TRAP,            // Conditional trap (TGE, TLT, TEQ, TNE, etc.)
     IR_ERET,            // Return from exception (ERET)
 
+    IR_IF_LIKELY,       // Start of likely-branch delay slot conditional
+    IR_END_LIKELY,      // End of likely-branch delay slot conditional
+
     // =========================================================================
     // Load Upper Immediate (special because it's a common pattern)
     // =========================================================================
@@ -752,6 +755,8 @@ inline const char* irOpName(IROp op) {
         case IROp::IR_BREAK:        return "BREAK";
         case IROp::IR_TRAP:         return "TRAP";
         case IROp::IR_ERET:         return "ERET";
+        case IROp::IR_IF_LIKELY:    return "IF_LIKELY";
+        case IROp::IR_END_LIKELY:   return "END_LIKELY";
         case IROp::IR_LUI:          return "LUI";
         case IROp::IR_CLZ:          return "CLZ";
         case IROp::IR_FADD:         return "FADD";

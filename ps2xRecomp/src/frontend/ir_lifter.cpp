@@ -251,6 +251,10 @@ std::optional<IRFunction> IRLifter::liftFunction(
             ? addrToBlockIndex_[disasm[0].addr] : 0;
     }
 
+    pendingTerminator_.reset();
+    delaySlotWait_ = 0;
+    pendingIsLikely_ = false;
+
     for (uint32_t i = 0; i < disasm.size(); ++i) {
         const auto& instr = disasm[i];
 
@@ -279,21 +283,45 @@ std::optional<IRFunction> IRLifter::liftFunction(
         if (instr.isNop()) {
             stats_.skippedNops++;
             stats_.liftedInstructions++;
-            if (progress) progress(i, stats_.totalInstructions);
-            continue;
+        } else {
+            // Dispatch to handler
+            auto handler = dispatchTable_.find(instr.mnemonic);
+            if (handler != dispatchTable_.end()) {
+                (this->*(handler->second))(func, *bb, instr, fields);
+                stats_.liftedInstructions++;
+            } else {
+                liftUnhandled(func, *bb, instr, fields);
+                stats_.unhandledMnemonics++;
+            }
         }
 
-        // Dispatch to handler
-        auto handler = dispatchTable_.find(instr.mnemonic);
-        if (handler != dispatchTable_.end()) {
-            (this->*(handler->second))(func, *bb, instr, fields);
-            stats_.liftedInstructions++;
-        } else {
-            liftUnhandled(func, *bb, instr, fields);
-            stats_.unhandledMnemonics++;
+        if (delaySlotWait_ > 0) {
+            delaySlotWait_--;
+        } else if (pendingTerminator_.has_value()) {
+            if (pendingIsLikely_) {
+                IRInst endif;
+                endif.op = IROp::IR_END_LIKELY;
+                bb->instructions.push_back(std::move(endif));
+            }
+            bb->instructions.push_back(std::move(*pendingTerminator_));
+            pendingTerminator_.reset();
+            pendingIsLikely_ = false;
         }
 
         if (progress) progress(i, stats_.totalInstructions);
+    }
+
+    // Flush any pending terminator at end of function
+    if (pendingTerminator_.has_value()) {
+        auto* bb = func.getBlock(currentBlockIdx);
+        if (bb) {
+            if (pendingIsLikely_) {
+                IRInst endif;
+                endif.op = IROp::IR_END_LIKELY;
+                bb->instructions.push_back(std::move(endif));
+            }
+            bb->instructions.push_back(std::move(*pendingTerminator_));
+        }
     }
 
     // Wire up fall-through edges between consecutive blocks
@@ -436,6 +464,19 @@ void IRLifter::liftUnhandled(IRFunction& func, IRBasicBlock& bb,
     inst.srcRaw = instr.rawBytes;
     inst.comment = "[UNHANDLED] " + instr.mnemonic + " " + instr.operands;
     bb.instructions.push_back(std::move(inst));
+}
+
+void IRLifter::emitTerminator(IRFunction& func, IRBasicBlock& bb, IRInst termInst, bool isLikely) {
+    pendingTerminator_ = std::move(termInst);
+    delaySlotWait_ = 1;
+    pendingIsLikely_ = isLikely;
+
+    if (isLikely) {
+        IRInst ifLikely;
+        ifLikely.op = IROp::IR_IF_LIKELY;
+        ifLikely.operands = pendingTerminator_->operands; // Copy condition operand
+        bb.instructions.push_back(std::move(ifLikely));
+    }
 }
 
 } // namespace ps2recomp

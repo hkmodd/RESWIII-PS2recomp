@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstring>
 #include <bit>
+#include <iostream>
+#include <cstdlib>
 #if defined(_MSC_VER)
 #include <intrin.h>
 #elif defined(USE_SSE2NEON)
@@ -731,5 +733,23 @@ static inline void Ps2SetGprLow64(R5900Context *ctx, int reg, __m128i new_low)
         if (reg_idx != 0)                  \
             ctx_ptr->r[reg_idx] = (val);   \
     } while (0)
+
+struct Ps2UnimplementedTrap {
+    template <typename T>
+    operator T() const { return T{}; }
+};
+
+inline Ps2UnimplementedTrap ps2_trap_unimplemented(uint32_t pc, const char* opName) {
+    std::cerr << "\n=======================================================\n"
+              << "[FATAL TRAP] Unimplemented Instruction Executed!\n"
+              << "PC     = 0x" << std::hex << pc << std::dec << "\n"
+              << "OpCode = " << opName << "\n"
+              << "Runner cannot survive this discrepancy. Aborting...\n"
+              << "=======================================================\n" << std::endl;
+    std::abort();
+    return {};
+}
+
+#define PS2_UNIMPLEMENTED_INSTRUCTION(pc, opcode_name) ps2_trap_unimplemented((pc), (opcode_name))
 
 #endif // PS2_RUNTIME_MACROS_H

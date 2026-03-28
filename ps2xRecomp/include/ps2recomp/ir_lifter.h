@@ -157,6 +157,12 @@ private:
 
     uint32_t getOrCreateBlock(ir::IRFunction& func, uint32_t addr);
 
+    void emitTerminator(ir::IRFunction& func, ir::IRBasicBlock& bb, ir::IRInst termInst, bool isLikely = false);
+
+    std::optional<ir::IRInst> pendingTerminator_;
+    uint32_t delaySlotWait_ = 0;
+    bool pendingIsLikely_ = false;
+
     // ── Individual instruction lifters ──────────────────────────────────
     // Integer ALU
     void liftADD   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
@@ -286,7 +292,7 @@ private:
     // ── Helper: emit conditional branch ──────────────────────────────────
     void emitCondBranch(ir::IRFunction& func, ir::IRBasicBlock& bb,
                         ir::IROp cmpOp, ir::ValueId lhs, ir::ValueId rhs,
-                        uint32_t targetAddr, uint32_t srcAddr);
+                        uint32_t targetAddr, uint32_t srcAddr, bool isLikely = false);
 
     // ── Helper: emit a memory address computation (base + offset) ───────
     ir::ValueId emitAddrCalc(ir::IRFunction& func, ir::IRBasicBlock& bb,

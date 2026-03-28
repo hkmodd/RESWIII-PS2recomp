@@ -214,6 +214,12 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_RETURN:
             out << "return";
             break;
+        case IROp::IR_IF_LIKELY:
+            out << "if (" << getValueName(inst.operands[0]) << ") {";
+            break;
+        case IROp::IR_END_LIKELY:
+            out << "}";
+            break;
         case IROp::IR_CONST:
             if (inst.result.type == IRType::F32) {
                 out << inst.constData.immFloat << "f";
@@ -339,7 +345,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "_mm_sra_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
             break;
         default:
-            out << "0 /* TODO: Unimplemented instruction (" << getOpString(inst.op) << ") */";
+            out << "PS2_UNIMPLEMENTED_INSTRUCTION(0x" << std::hex << inst.srcAddress << std::dec << "U, \"" << getOpString(inst.op) << "\")";
             break;
     }
 
