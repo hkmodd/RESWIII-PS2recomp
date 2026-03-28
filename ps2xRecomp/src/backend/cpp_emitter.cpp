@@ -274,6 +274,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             }
             break;
         case IROp::IR_FADD:
+        case IROp::IR_FADDA:
             out << getValueName(inst.operands[0]) << " + " << getValueName(inst.operands[1]);
             break;
         case IROp::IR_FSUB:
@@ -347,6 +348,12 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             break;
         case IROp::IR_PSRAW:
             out << "_mm_sra_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
+            break;
+        case IROp::IR_SYSCALL:
+            out << "runtime->SignalException(ctx, EXCEPTION_SYSCALL); return";
+            break;
+        case IROp::IR_BREAK:
+            out << "runtime->SignalException(ctx, EXCEPTION_BREAKPOINT); return";
             break;
         default:
             if (inst.result.type != IRType::Void) {

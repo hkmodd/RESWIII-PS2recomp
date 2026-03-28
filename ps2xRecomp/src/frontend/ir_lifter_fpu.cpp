@@ -22,6 +22,19 @@ void IRLifter::lift##Name(IRFunction& func, uint32_t blockIdx,              \
 }
 
 LIFT_FPU_BIN(ADD_S, IR_FADD)
+
+void IRLifter::liftADDA_S(IRFunction& func, uint32_t blockIdx,
+                          const GhidraInstruction& instr,
+                          const MIPSFields& f) {
+    auto fs = emitFPRRead(func, blockIdx, f.fs, instr.addr);
+    auto ft = emitFPRRead(func, blockIdx, f.ft, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_FADDA, IRType::F32, fs, ft, instr.addr);
+    ValueId vid = inst.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+    auto w = ir::makeRegWrite(IRReg::fpuAcc(), vid);
+    w.srcAddress = instr.addr;
+    func.blocks[blockIdx].instructions.push_back(std::move(w));
+}
 LIFT_FPU_BIN(SUB_S, IR_FSUB)
 LIFT_FPU_BIN(MUL_S, IR_FMUL)
 LIFT_FPU_BIN(DIV_S, IR_FDIV)

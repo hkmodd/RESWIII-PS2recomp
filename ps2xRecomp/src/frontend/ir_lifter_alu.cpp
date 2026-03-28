@@ -331,4 +331,51 @@ void IRLifter::liftMOVN(IRFunction& func, uint32_t blockIdx,
     emitGPRWrite(func, blockIdx, f.rd, sId, instr.addr);
 }
 
+// ── Pseudo / Synthetic instructions ─────────────────────────────────────────
+
+void IRLifter::liftMOVE(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields& f) {
+    if (f.opcode == 0 && f.func == 0x2D) liftDADDU(func, blockIdx, instr, f);
+    else if (f.opcode == 0 && f.func == 0x21) liftADDU(func, blockIdx, instr, f);
+    else liftOR(func, blockIdx, instr, f);
+}
+
+void IRLifter::liftCLEAR(IRFunction& func, uint32_t blockIdx,
+                          const GhidraInstruction& instr,
+                          const MIPSFields& f) {
+    if (f.opcode == 0x11) { // COP1
+        if (f.rs == 4) { // mtc1
+            liftMTC1(func, blockIdx, instr, f);
+            return;
+        } else if (f.rs == 2 || f.rs == 6) { // ctc1
+            emitComment(func, blockIdx, "[UNHANDLED] clear fcsr (ctc1 ignored)", instr.addr);
+            return;
+        }
+    }
+    
+    // Otherwise treating it as integer clear (addu, or, daddu, por)
+    uint8_t dest = f.rd;
+    if (f.opcode != 0 && f.opcode != 0x1C) {
+        dest = f.rt; // Assume I-Type fallback like addiu
+    }
+    
+    emitGPRWrite(func, blockIdx, dest, emitConst32(func, blockIdx, 0), instr.addr);
+}
+
+void IRLifter::liftLI(IRFunction& func, uint32_t blockIdx,
+                       const GhidraInstruction& instr,
+                       const MIPSFields& f) {
+    if (f.opcode == 0x19) liftDADDIU(func, blockIdx, instr, f);
+    else if (f.opcode == 0x0D) liftORI(func, blockIdx, instr, f);
+    else liftADDIU(func, blockIdx, instr, f);
+}
+
+void IRLifter::liftNEGU(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields& f) {
+    // subu rd, zero, rt
+    liftSUBU(func, blockIdx, instr, f);
+}
+
 } // namespace ps2recomp

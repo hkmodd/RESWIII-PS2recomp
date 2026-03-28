@@ -21,3 +21,7 @@ ps2xRuntime/output
 RESWIII-PS2recomp.code-workspace
 /build_clang
 /output
+build_runner_agent.bat
+build_log_errors.txt
+logs/build_runner_log.txt
+/logs

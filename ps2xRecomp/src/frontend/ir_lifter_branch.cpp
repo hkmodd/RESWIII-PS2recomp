@@ -69,6 +69,15 @@ void IRLifter::liftBNEL(IRFunction& func, uint32_t blockIdx,
     emitCondBranch(func, blockIdx, IROp::IR_NE, rs, rt, target, instr.addr, true);
 }
 
+void IRLifter::liftB(IRFunction& func, uint32_t blockIdx,
+                      const GhidraInstruction& instr,
+                      const MIPSFields& f) {
+    // b is equivalent to beq zero, zero, offset
+    auto zero = emitConst32(func, blockIdx, 0);
+    uint32_t target = computeBranchTarget(instr.addr, f.simm16);
+    emitCondBranch(func, blockIdx, IROp::IR_EQ, zero, zero, target, instr.addr);
+}
+
 // ── BGEZ / BGTZ / BLEZ / BLTZ ──────────────────────────────────────────────
 
 void IRLifter::liftBGEZ(IRFunction& func, uint32_t blockIdx,

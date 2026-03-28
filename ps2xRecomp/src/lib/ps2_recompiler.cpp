@@ -1106,6 +1106,7 @@ namespace ps2recomp
                     chunkOutput << "#pragma clang diagnostic ignored \"-Wunused-function\"\n";
                     chunkOutput << "#pragma clang diagnostic ignored \"-Wunused-variable\"\n";
                     chunkOutput << "#pragma clang diagnostic ignored \"-Wunused-value\"\n";
+                    chunkOutput << "#pragma clang diagnostic ignored \"-Wtautological-compare\"\n";
                     chunkOutput << "#ifdef _DEBUG\n";
                     chunkOutput << "#include \"ps2_log.h\"\n";
                     chunkOutput << "#endif\n\n";
@@ -1285,6 +1286,7 @@ namespace ps2recomp
                 combinedOutput << "#pragma clang diagnostic ignored \"-Wunused-function\"\n";
                 combinedOutput << "#pragma clang diagnostic ignored \"-Wunused-variable\"\n";
                 combinedOutput << "#pragma clang diagnostic ignored \"-Wunused-value\"\n";
+                combinedOutput << "#pragma clang diagnostic ignored \"-Wtautological-compare\"\n";
                 combinedOutput << "#ifdef _DEBUG\n";
                 combinedOutput << "#include \"ps2_log.h\"\n";
                 combinedOutput << "#endif\n\n";

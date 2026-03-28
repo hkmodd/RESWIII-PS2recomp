@@ -4,6 +4,7 @@
 // ============================================================================
 #include "ps2recomp/ir_lifter.h"
 #include <algorithm>
+#include <cctype>
 #include <cassert>
 #include <cstdio>
 #include <sstream>
@@ -105,8 +106,16 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["break"]  = &IRLifter::liftBREAK;
     dispatchTable_["sync"]   = &IRLifter::liftSYNC;
     dispatchTable_["nop"]    = &IRLifter::liftNOP;
+    // Pseudo / Synthetic
+    dispatchTable_["move"]   = &IRLifter::liftMOVE;
+    dispatchTable_["clear"]  = &IRLifter::liftCLEAR;
+    dispatchTable_["li"]     = &IRLifter::liftLI;
+    dispatchTable_["_clear"] = &IRLifter::liftCLEAR;
+    dispatchTable_["negu"]   = &IRLifter::liftNEGU;
+    dispatchTable_["b"]      = &IRLifter::liftB;
     // FPU
     dispatchTable_["add.s"]  = &IRLifter::liftADD_S;
+    dispatchTable_["adda.s"] = &IRLifter::liftADDA_S;
     dispatchTable_["sub.s"]  = &IRLifter::liftSUB_S;
     dispatchTable_["mul.s"]  = &IRLifter::liftMUL_S;
     dispatchTable_["div.s"]  = &IRLifter::liftDIV_S;
@@ -292,13 +301,21 @@ std::optional<IRFunction> IRLifter::liftFunction(
             emitComment(func, currentBlockIdx, text, instr.addr);
         }
 
+        std::string mnemonic = instr.mnemonic;
+        for (auto& c : mnemonic) {
+            c = std::tolower(static_cast<unsigned char>(c));
+        }
+        if (!mnemonic.empty() && mnemonic[0] == '_') {
+            mnemonic = mnemonic.substr(1);
+        }
+
         // Skip NOPs (SLL $zero, $zero, 0)
-        if (instr.isNop()) {
+        if (instr.isNop() || mnemonic == "nop") {
             stats_.skippedNops++;
             stats_.liftedInstructions++;
         } else {
             // Dispatch to handler
-            auto handler = dispatchTable_.find(instr.mnemonic);
+            auto handler = dispatchTable_.find(mnemonic);
             if (handler != dispatchTable_.end()) {
                 (this->*(handler->second))(func, currentBlockIdx, instr, fields);
                 stats_.liftedInstructions++;
@@ -459,6 +476,11 @@ void IRLifter::inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isL
     const GhidraInstruction& delaySlotInst = (*currentDisasm_)[currentInstrIndex_ + 1];
     MIPSFields f = decodeFields(delaySlotInst.rawBytes);
     
+    std::string mnemonic = delaySlotInst.mnemonic;
+    if (!mnemonic.empty() && mnemonic[0] == '_') {
+        mnemonic = mnemonic.substr(1);
+    }
+    
     if (isLikely && condId) {
         ir::IRInst markIfLikely;
         markIfLikely.op = ir::IROp::IR_IF_LIKELY;
@@ -467,11 +489,15 @@ void IRLifter::inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isL
     }
     
     // Dispatch delay slot instruction
-    auto handlerIt = dispatchTable_.find(delaySlotInst.mnemonic);
+    auto handlerIt = dispatchTable_.find(mnemonic);
     if (handlerIt != dispatchTable_.end()) {
         (this->*(handlerIt->second))(func, blockIdx, delaySlotInst, f);
     } else {
-        liftUnhandled(func, blockIdx, delaySlotInst, f);
+        if (mnemonic == "nop") {
+            // NOPs are safe to skip inside delay slots too
+        } else {
+            liftUnhandled(func, blockIdx, delaySlotInst, f);
+        }
     }
     
     if (isLikely) {
