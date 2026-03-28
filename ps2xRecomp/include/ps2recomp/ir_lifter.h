@@ -117,7 +117,7 @@ private:
     // Instruction handler type: emits IR for a single MIPS instruction
     using LiftHandler = void (IRLifter::*)(
         ir::IRFunction& func,
-        ir::IRBasicBlock& bb,
+        uint32_t blockIdx,
         const GhidraInstruction& instr,
         const MIPSFields& fields);
 
@@ -128,27 +128,27 @@ private:
     // ── Register read/write helpers ─────────────────────────────────────
     // Emit IR_REG_READ for a GPR and return the SSA ValueId.
     // $zero always returns a constant 0.
-    ir::ValueId emitGPRRead(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    ir::ValueId emitGPRRead(ir::IRFunction& func, uint32_t blockIdx,
                             uint8_t regIdx, uint32_t srcAddr);
-    ir::ValueId emitFPRRead(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    ir::ValueId emitFPRRead(ir::IRFunction& func, uint32_t blockIdx,
                             uint8_t regIdx, uint32_t srcAddr);
 
     // Emit IR_REG_WRITE for a GPR. Writes to $zero are silently dropped.
-    void emitGPRWrite(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    void emitGPRWrite(ir::IRFunction& func, uint32_t blockIdx,
                       uint8_t regIdx, ir::ValueId value, uint32_t srcAddr);
-    void emitFPRWrite(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    void emitFPRWrite(ir::IRFunction& func, uint32_t blockIdx,
                       uint8_t regIdx, ir::ValueId value, uint32_t srcAddr);
 
     // Emit a signed/unsigned immediate constant
-    ir::ValueId emitConst32(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    ir::ValueId emitConst32(ir::IRFunction& func, uint32_t blockIdx,
                             int32_t value);
-    ir::ValueId emitConstU32(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    ir::ValueId emitConstU32(ir::IRFunction& func, uint32_t blockIdx,
                              uint32_t value);
-    ir::ValueId emitConst64(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    ir::ValueId emitConst64(ir::IRFunction& func, uint32_t blockIdx,
                             int64_t value);
 
     // ── Comment emission ────────────────────────────────────────────────
-    void emitComment(ir::IRBasicBlock& bb, const std::string& text,
+    void emitComment(ir::IRFunction& func, uint32_t blockIdx, const std::string& text,
                      uint32_t srcAddr);
 
     // ── Block management ────────────────────────────────────────────────
@@ -157,8 +157,8 @@ private:
 
     uint32_t getOrCreateBlock(ir::IRFunction& func, uint32_t addr);
 
-    void inlineDelaySlot(ir::IRFunction& func, ir::IRBasicBlock& bb, bool isLikely);
-    void emitTerminator(ir::IRFunction& func, ir::IRBasicBlock& bb, ir::IRInst termInst, bool isLikely = false, bool hasFallthrough = true);
+    void inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isLikely);
+    void emitTerminator(ir::IRFunction& func, uint32_t blockIdx, ir::IRInst termInst, bool isLikely = false, bool hasFallthrough = true);
 
     const std::vector<GhidraInstruction>* currentDisasm_ = nullptr;
     size_t currentInstrIndex_ = 0;
@@ -166,141 +166,141 @@ private:
 
     // ── Individual instruction lifters ──────────────────────────────────
     // Integer ALU
-    void liftADD   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftADDU  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftADDI  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftADDIU (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSUB   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSUBU  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftDADD  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftDADDU (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftDADDI (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftDADDIU(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftADD   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftADDU  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftADDI  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftADDIU (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSUB   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSUBU  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDADD  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDADDU (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDADDI (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDADDIU(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Logic
-    void liftAND   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftANDI  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftOR    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftORI   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftXOR   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftXORI  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftNOR   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftAND   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftANDI  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftOR    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftORI   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftXOR   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftXORI  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftNOR   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Shifts
-    void liftSLL   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSRL   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSRA   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSLLV  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSRLV  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSRAV  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftSLL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSRL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSRA   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSLLV  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSRLV  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSRAV  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Set-on-less-than
-    void liftSLT   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSLTU  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSLTI  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSLTIU (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftSLT   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSLTU  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSLTI  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSLTIU (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // LUI
-    void liftLUI   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftLUI   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Multiply / Divide
-    void liftMULT  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMULTU (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftDIV   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftDIVU  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMFHI  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMFLO  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMTHI  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMTLO  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftMULT  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMULTU (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDIV   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDIVU  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMFHI  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMFLO  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMTHI  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMTLO  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Memory loads
-    void liftLB    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLBU   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLH    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLHU   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLW    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLWU   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLD    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLQ    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLWL   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLWR   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftLB    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLBU   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLH    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLHU   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLW    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLWU   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLD    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLQ    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLWL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLWR   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Memory stores
-    void liftSB    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSH    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSW    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSD    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSQ    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSWL   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSWR   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftSB    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSH    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSW    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSD    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSQ    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSWL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSWR   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Branches
-    void liftBEQ   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBNE   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBGEZ  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBGTZ  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBLEZ  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBLTZ  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBEQL  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBNEL  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftBEQ   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBNE   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBGEZ  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBGTZ  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBLEZ  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBLTZ  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBEQL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBNEL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Jumps / Calls
-    void liftJ     (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftJAL   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftJR    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftJALR  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftJ     (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftJAL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftJR    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftJALR  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Conditional move
-    void liftMOVZ  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMOVN  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftMOVZ  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMOVN  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // System
-    void liftSYSCALL(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBREAK  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSYNC   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftNOP    (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftSYSCALL(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBREAK  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSYNC   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftNOP    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // FPU (COP1)
-    void liftADD_S  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSUB_S  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMUL_S  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftDIV_S  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMOV_S  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftNEG_S  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftABS_S  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSQRT_S (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMFC1   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftMTC1   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftCVT_S_W(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftCVT_W_S(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftLWC1   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftSWC1   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftC_EQ_S (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftC_LT_S (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftC_LE_S (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBC1T   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBC1F   (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBC1TL  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
-    void liftBC1FL  (ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftADD_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSUB_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMUL_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDIV_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMOV_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftNEG_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftABS_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSQRT_S (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMFC1   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMTC1   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftCVT_S_W(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftCVT_W_S(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLWC1   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSWC1   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftC_EQ_S (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftC_LT_S (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftC_LE_S (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBC1T   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBC1F   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBC1TL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBC1FL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Fallback for unhandled instructions
-    void liftUnhandled(ir::IRFunction&, ir::IRBasicBlock&, const GhidraInstruction&, const MIPSFields&);
+    void liftUnhandled(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // ── Helper: compute branch target address ───────────────────────────
     uint32_t computeBranchTarget(uint32_t pc, int16_t offset) const;
     uint32_t computeJumpTarget(uint32_t pc, uint32_t target26) const;
 
     // ── Helper: emit conditional branch ──────────────────────────────────
-    void emitCondBranch(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    void emitCondBranch(ir::IRFunction& func, uint32_t blockIdx,
                         ir::IROp cmpOp, ir::ValueId lhs, ir::ValueId rhs,
                         uint32_t targetAddr, uint32_t srcAddr, bool isLikely = false);
 
     // ── Helper: emit a memory address computation (base + offset) ───────
-    ir::ValueId emitAddrCalc(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    ir::ValueId emitAddrCalc(ir::IRFunction& func, uint32_t blockIdx,
                              uint8_t baseReg, int16_t offset, uint32_t srcAddr);
 
     // ── Helper: emit FPU compare ────────────────────────────────────────
-    void emitFPUCompare(ir::IRFunction& func, ir::IRBasicBlock& bb,
+    void emitFPUCompare(ir::IRFunction& func, uint32_t blockIdx,
                         ir::IROp cmpOp, const GhidraInstruction& instr,
                         const MIPSFields& f);
 

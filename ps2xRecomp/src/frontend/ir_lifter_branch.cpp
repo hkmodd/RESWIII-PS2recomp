@@ -8,12 +8,12 @@ namespace ps2recomp {
 using namespace ir;
 
 // Helper: emit a conditional branch (BEQ/BNE/BGEZ/etc.)
-void IRLifter::emitCondBranch(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::emitCondBranch(IRFunction& func, uint32_t blockIdx,
                                IROp cmpOp, ValueId lhs, ValueId rhs,
                                uint32_t targetAddr, uint32_t srcAddr, bool isLikely) {
     auto cmp = makeBinaryOp(func, cmpOp, IRType::I1, lhs, rhs, srcAddr);
     ValueId cId = cmp.result.id;
-    bb.instructions.push_back(std::move(cmp));
+    func.blocks[blockIdx].instructions.push_back(std::move(cmp));
 
     uint32_t tgtIdx = getOrCreateBlock(func, targetAddr);
     uint32_t fallIdx = 0;
@@ -25,92 +25,92 @@ void IRLifter::emitCondBranch(IRFunction& func, IRBasicBlock& bb,
     br.operands = {cId};
     br.branchTarget = tgtIdx;
     br.branchLikely = isLikely;
-    emitTerminator(func, bb, std::move(br), isLikely);
+    emitTerminator(func, blockIdx, std::move(br), isLikely);
 
-    bb.successors.push_back(tgtIdx);
-    func.blocks[tgtIdx].predecessors.push_back(bb.index);
+    func.blocks[blockIdx].successors.push_back(tgtIdx);
+    func.blocks[tgtIdx].predecessors.push_back(blockIdx);
 }
 
 // ── BEQ / BNE ───────────────────────────────────────────────────────────────
 
-void IRLifter::liftBEQ(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftBEQ(IRFunction& func, uint32_t blockIdx,
                         const GhidraInstruction& instr,
                         const MIPSFields& f) {
-    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
-    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto rs = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, blockIdx, f.rt, instr.addr);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
-    emitCondBranch(func, bb, IROp::IR_EQ, rs, rt, target, instr.addr);
+    emitCondBranch(func, blockIdx, IROp::IR_EQ, rs, rt, target, instr.addr);
 }
 
-void IRLifter::liftBNE(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftBNE(IRFunction& func, uint32_t blockIdx,
                         const GhidraInstruction& instr,
                         const MIPSFields& f) {
-    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
-    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto rs = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, blockIdx, f.rt, instr.addr);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
-    emitCondBranch(func, bb, IROp::IR_NE, rs, rt, target, instr.addr);
+    emitCondBranch(func, blockIdx, IROp::IR_NE, rs, rt, target, instr.addr);
 }
 
-void IRLifter::liftBEQL(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftBEQL(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
-    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto rs = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, blockIdx, f.rt, instr.addr);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
-    emitCondBranch(func, bb, IROp::IR_EQ, rs, rt, target, instr.addr, true);
+    emitCondBranch(func, blockIdx, IROp::IR_EQ, rs, rt, target, instr.addr, true);
 }
 
-void IRLifter::liftBNEL(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftBNEL(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
-    auto rt = emitGPRRead(func, bb, f.rt, instr.addr);
+    auto rs = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto rt = emitGPRRead(func, blockIdx, f.rt, instr.addr);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
-    emitCondBranch(func, bb, IROp::IR_NE, rs, rt, target, instr.addr, true);
+    emitCondBranch(func, blockIdx, IROp::IR_NE, rs, rt, target, instr.addr, true);
 }
 
 // ── BGEZ / BGTZ / BLEZ / BLTZ ──────────────────────────────────────────────
 
-void IRLifter::liftBGEZ(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftBGEZ(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, bb, f.rs, instr.addr);
-    auto zero = emitConst32(func, bb, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto zero = emitConst32(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     // rs >= 0 ↔ !(rs < 0)
-    emitCondBranch(func, bb, IROp::IR_SGE, rs, zero, target, instr.addr);
+    emitCondBranch(func, blockIdx, IROp::IR_SGE, rs, zero, target, instr.addr);
 }
 
-void IRLifter::liftBGTZ(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftBGTZ(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, bb, f.rs, instr.addr);
-    auto zero = emitConst32(func, bb, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto zero = emitConst32(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
-    emitCondBranch(func, bb, IROp::IR_SGT, rs, zero, target, instr.addr);
+    emitCondBranch(func, blockIdx, IROp::IR_SGT, rs, zero, target, instr.addr);
 }
 
-void IRLifter::liftBLEZ(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftBLEZ(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, bb, f.rs, instr.addr);
-    auto zero = emitConst32(func, bb, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto zero = emitConst32(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
-    emitCondBranch(func, bb, IROp::IR_SLE, rs, zero, target, instr.addr);
+    emitCondBranch(func, blockIdx, IROp::IR_SLE, rs, zero, target, instr.addr);
 }
 
-void IRLifter::liftBLTZ(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftBLTZ(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, bb, f.rs, instr.addr);
-    auto zero = emitConst32(func, bb, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto zero = emitConst32(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
-    emitCondBranch(func, bb, IROp::IR_SLT, rs, zero, target, instr.addr);
+    emitCondBranch(func, blockIdx, IROp::IR_SLT, rs, zero, target, instr.addr);
 }
 
 // ── J / JAL / JR / JALR ────────────────────────────────────────────────────
 
-void IRLifter::liftJ(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftJ(IRFunction& func, uint32_t blockIdx,
                       const GhidraInstruction& instr,
                       const MIPSFields& f) {
     uint32_t target = computeJumpTarget(instr.addr, f.target26);
@@ -120,38 +120,38 @@ void IRLifter::liftJ(IRFunction& func, IRBasicBlock& bb,
     br.op = IROp::IR_BRANCH;
     br.srcAddress = instr.addr;
     br.branchTarget = tgtIdx;
-    emitTerminator(func, bb, std::move(br), false, false);
+    emitTerminator(func, blockIdx, std::move(br), false, false);
 
-    bb.successors.push_back(tgtIdx);
-    func.blocks[tgtIdx].predecessors.push_back(bb.index);
+    func.blocks[blockIdx].successors.push_back(tgtIdx);
+    func.blocks[tgtIdx].predecessors.push_back(blockIdx);
 }
 
-void IRLifter::liftJAL(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftJAL(IRFunction& func, uint32_t blockIdx,
                         const GhidraInstruction& instr,
                         const MIPSFields& f) {
     uint32_t target = computeJumpTarget(instr.addr, f.target26);
     // Save return address: $ra = PC + 8 (after delay slot)
-    auto raVal = emitConstU32(func, bb, instr.addr + 8);
-    emitGPRWrite(func, bb, 31, raVal, instr.addr); // $ra = reg 31
+    auto raVal = emitConstU32(func, blockIdx, instr.addr + 8);
+    emitGPRWrite(func, blockIdx, 31, raVal, instr.addr); // $ra = reg 31
 
     IRInst call;
     call.op = IROp::IR_CALL;
     call.srcAddress = instr.addr;
     call.branchTarget = target; // store call target address
     call.comment = "JAL";
-    emitTerminator(func, bb, std::move(call));
+    emitTerminator(func, blockIdx, std::move(call));
 }
 
-void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftJR(IRFunction& func, uint32_t blockIdx,
                        const GhidraInstruction& instr,
                        const MIPSFields& f) {
-    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rs = emitGPRRead(func, blockIdx, f.rs, instr.addr);
     if (f.rs == 31) {
         // JR $ra = function return
         IRInst ret;
         ret.op = IROp::IR_RETURN;
         ret.srcAddress = instr.addr;
-        emitTerminator(func, bb, std::move(ret), false, false);
+        emitTerminator(func, blockIdx, std::move(ret), false, false);
     } else {
         // Indirect jump — check if it's a resolved jump table
         bool resolved = false;
@@ -173,11 +173,11 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
                             sw.switchValues.push_back(case_val.targetAddr);
                             
                             // Only add edge once
-                            bb.successors.push_back(targetIdx);
-                            func.blocks[targetIdx].predecessors.push_back(bb.index);
+                            func.blocks[blockIdx].successors.push_back(targetIdx);
+                            func.blocks[targetIdx].predecessors.push_back(blockIdx);
                         }
                     }
-                    emitTerminator(func, bb, std::move(sw), false, false);
+                    emitTerminator(func, blockIdx, std::move(sw), false, false);
                     resolved = true;
                     break;
                 }
@@ -191,58 +191,58 @@ void IRLifter::liftJR(IRFunction& func, IRBasicBlock& bb,
             ibr.srcAddress = instr.addr;
             ibr.operands = {rs};
             ibr.comment = "indirect jump (JR)";
-            emitTerminator(func, bb, std::move(ibr), false, false);
+            emitTerminator(func, blockIdx, std::move(ibr), false, false);
         }
     }
 }
 
-void IRLifter::liftJALR(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftJALR(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs = emitGPRRead(func, bb, f.rs, instr.addr);
+    auto rs = emitGPRRead(func, blockIdx, f.rs, instr.addr);
     // Save return address
-    auto raVal = emitConstU32(func, bb, instr.addr + 8);
-    emitGPRWrite(func, bb, f.rd, raVal, instr.addr);
+    auto raVal = emitConstU32(func, blockIdx, instr.addr + 8);
+    emitGPRWrite(func, blockIdx, f.rd, raVal, instr.addr);
 
     IRInst call;
     call.op = IROp::IR_CALL;
     call.srcAddress = instr.addr;
     call.operands = {rs};
     call.comment = "JALR (indirect call)";
-    emitTerminator(func, bb, std::move(call));
+    emitTerminator(func, blockIdx, std::move(call));
 }
 
 // ── System instructions ─────────────────────────────────────────────────────
 
-void IRLifter::liftSYSCALL(IRFunction&, IRBasicBlock& bb,
+void IRLifter::liftSYSCALL(IRFunction& func, uint32_t blockIdx,
                             const GhidraInstruction& instr,
                             const MIPSFields&) {
     IRInst inst;
     inst.op = IROp::IR_SYSCALL;
     inst.srcAddress = instr.addr;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
-void IRLifter::liftBREAK(IRFunction&, IRBasicBlock& bb,
+void IRLifter::liftBREAK(IRFunction& func, uint32_t blockIdx,
                           const GhidraInstruction& instr,
                           const MIPSFields&) {
     IRInst inst;
     inst.op = IROp::IR_BREAK;
     inst.srcAddress = instr.addr;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
-void IRLifter::liftSYNC(IRFunction&, IRBasicBlock& bb,
+void IRLifter::liftSYNC(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields&) {
     IRInst inst;
     inst.op = IROp::IR_NOP;
     inst.srcAddress = instr.addr;
     inst.comment = "SYNC (memory barrier)";
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
-void IRLifter::liftNOP(IRFunction&, IRBasicBlock& bb,
+void IRLifter::liftNOP(IRFunction& func, uint32_t blockIdx,
                         const GhidraInstruction& instr,
                         const MIPSFields&) {
     // Explicit NOP — already counted in stats

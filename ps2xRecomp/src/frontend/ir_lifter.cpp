@@ -280,7 +280,7 @@ std::optional<IRFunction> IRLifter::liftFunction(
         if (emitComments_) {
             std::string text = instr.mnemonic;
             if (!instr.operands.empty()) text += " " + instr.operands;
-            emitComment(*bb, text, instr.addr);
+            emitComment(func, currentBlockIdx, text, instr.addr);
         }
 
         // Skip NOPs (SLL $zero, $zero, 0)
@@ -291,10 +291,10 @@ std::optional<IRFunction> IRLifter::liftFunction(
             // Dispatch to handler
             auto handler = dispatchTable_.find(instr.mnemonic);
             if (handler != dispatchTable_.end()) {
-                (this->*(handler->second))(func, *bb, instr, fields);
+                (this->*(handler->second))(func, currentBlockIdx, instr, fields);
                 stats_.liftedInstructions++;
             } else {
-                liftUnhandled(func, *bb, instr, fields);
+                liftUnhandled(func, currentBlockIdx, instr, fields);
                 stats_.unhandledMnemonics++;
             }
         }
@@ -318,60 +318,60 @@ std::optional<IRFunction> IRLifter::liftFunction(
 // Register read/write helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-ValueId IRLifter::emitGPRRead(IRFunction& func, IRBasicBlock& bb,
+ValueId IRLifter::emitGPRRead(IRFunction& func, uint32_t blockIdx,
                                uint8_t regIdx, uint32_t srcAddr) {
     // $zero is always 0
-    if (regIdx == 0) return emitConst32(func, bb, 0);
+    if (regIdx == 0) return emitConst32(func, blockIdx, 0);
 
     auto inst = makeRegRead(func, IRType::I32, IRReg::gpr(regIdx));
     inst.srcAddress = srcAddr;
     ValueId vid = inst.result.id;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
     return vid;
 }
 
-ValueId IRLifter::emitFPRRead(IRFunction& func, IRBasicBlock& bb,
+ValueId IRLifter::emitFPRRead(IRFunction& func, uint32_t blockIdx,
                                uint8_t regIdx, uint32_t srcAddr) {
     auto inst = makeRegRead(func, IRType::F32, IRReg::fpr(regIdx));
     inst.srcAddress = srcAddr;
     ValueId vid = inst.result.id;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
     return vid;
 }
 
-void IRLifter::emitGPRWrite(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::emitGPRWrite(IRFunction& func, uint32_t blockIdx,
                              uint8_t regIdx, ValueId value, uint32_t srcAddr) {
     if (regIdx == 0) return;  // writes to $zero are dropped
     auto inst = makeRegWrite(IRReg::gpr(regIdx), value);
     inst.srcAddress = srcAddr;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
-void IRLifter::emitFPRWrite(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::emitFPRWrite(IRFunction& func, uint32_t blockIdx,
                              uint8_t regIdx, ValueId value, uint32_t srcAddr) {
     auto inst = makeRegWrite(IRReg::fpr(regIdx), value);
     inst.srcAddress = srcAddr;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
-ValueId IRLifter::emitConst32(IRFunction& func, IRBasicBlock& bb, int32_t value) {
+ValueId IRLifter::emitConst32(IRFunction& func, uint32_t blockIdx, int32_t value) {
     auto inst = makeConst(func, IRType::I32, static_cast<int64_t>(value));
     ValueId vid = inst.result.id;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
     return vid;
 }
 
-ValueId IRLifter::emitConstU32(IRFunction& func, IRBasicBlock& bb, uint32_t value) {
+ValueId IRLifter::emitConstU32(IRFunction& func, uint32_t blockIdx, uint32_t value) {
     auto inst = makeConstU(func, IRType::I32, static_cast<uint64_t>(value));
     ValueId vid = inst.result.id;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
     return vid;
 }
 
-ValueId IRLifter::emitConst64(IRFunction& func, IRBasicBlock& bb, int64_t value) {
+ValueId IRLifter::emitConst64(IRFunction& func, uint32_t blockIdx, int64_t value) {
     auto inst = makeConst(func, IRType::I64, value);
     ValueId vid = inst.result.id;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
     return vid;
 }
 
@@ -379,13 +379,13 @@ ValueId IRLifter::emitConst64(IRFunction& func, IRBasicBlock& bb, int64_t value)
 // Comment emission
 // ═══════════════════════════════════════════════════════════════════════════
 
-void IRLifter::emitComment(IRBasicBlock& bb, const std::string& text,
+void IRLifter::emitComment(IRFunction& func, uint32_t blockIdx, const std::string& text,
                             uint32_t srcAddr) {
     IRInst inst;
     inst.op = IROp::IR_COMMENT;
     inst.comment = text;
     inst.srcAddress = srcAddr;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -417,15 +417,15 @@ uint32_t IRLifter::computeJumpTarget(uint32_t pc, uint32_t target26) const {
     return ((pc + 4) & 0xF0000000) | (target26 << 2);
 }
 
-ValueId IRLifter::emitAddrCalc(IRFunction& func, IRBasicBlock& bb,
+ValueId IRLifter::emitAddrCalc(IRFunction& func, uint32_t blockIdx,
                                 uint8_t baseReg, int16_t offset,
                                 uint32_t srcAddr) {
-    auto base = emitGPRRead(func, bb, baseReg, srcAddr);
+    auto base = emitGPRRead(func, blockIdx, baseReg, srcAddr);
     if (offset == 0) return base;
-    auto off = emitConst32(func, bb, static_cast<int32_t>(offset));
+    auto off = emitConst32(func, blockIdx, static_cast<int32_t>(offset));
     auto inst = makeBinaryOp(func, IROp::IR_ADD, IRType::I32, base, off, srcAddr);
     ValueId vid = inst.result.id;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
     return vid;
 }
 
@@ -433,7 +433,7 @@ ValueId IRLifter::emitAddrCalc(IRFunction& func, IRBasicBlock& bb,
 // Unhandled instruction fallback
 // ═══════════════════════════════════════════════════════════════════════════
 
-void IRLifter::liftUnhandled(IRFunction& func, IRBasicBlock& bb,
+void IRLifter::liftUnhandled(IRFunction& func, uint32_t blockIdx,
                               const GhidraInstruction& instr,
                               const MIPSFields&) {
     IRInst inst;
@@ -441,10 +441,10 @@ void IRLifter::liftUnhandled(IRFunction& func, IRBasicBlock& bb,
     inst.srcAddress = instr.addr;
     inst.srcRaw = instr.rawBytes;
     inst.comment = "[UNHANDLED] " + instr.mnemonic + " " + instr.operands;
-    bb.instructions.push_back(std::move(inst));
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
-void IRLifter::inlineDelaySlot(ir::IRFunction& func, ir::IRBasicBlock& bb, bool isLikely) {
+void IRLifter::inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isLikely) {
     if (currentInstrIndex_ + 1 >= currentDisasm_->size()) return;
     
     const GhidraInstruction& delaySlotInst = (*currentDisasm_)[currentInstrIndex_ + 1];
@@ -453,21 +453,21 @@ void IRLifter::inlineDelaySlot(ir::IRFunction& func, ir::IRBasicBlock& bb, bool 
     if (isLikely) {
         ir::IRInst markIfLikely;
         markIfLikely.op = ir::IROp::IR_IF_LIKELY;
-        bb.instructions.push_back(std::move(markIfLikely));
+        func.blocks[blockIdx].instructions.push_back(std::move(markIfLikely));
     }
     
     // Dispatch delay slot instruction
     auto handlerIt = dispatchTable_.find(delaySlotInst.mnemonic);
     if (handlerIt != dispatchTable_.end()) {
-        (this->*(handlerIt->second))(func, bb, delaySlotInst, f);
+        (this->*(handlerIt->second))(func, blockIdx, delaySlotInst, f);
     } else {
-        liftUnhandled(func, bb, delaySlotInst, f);
+        liftUnhandled(func, blockIdx, delaySlotInst, f);
     }
     
     if (isLikely) {
         ir::IRInst markEndLikely;
         markEndLikely.op = ir::IROp::IR_END_LIKELY;
-        bb.instructions.push_back(std::move(markEndLikely));
+        func.blocks[blockIdx].instructions.push_back(std::move(markEndLikely));
     }
     
     // Check if we should skip the delay slot in main processing loop
@@ -477,20 +477,20 @@ void IRLifter::inlineDelaySlot(ir::IRFunction& func, ir::IRBasicBlock& bb, bool 
     }
 }
 
-void IRLifter::emitTerminator(IRFunction& func, IRBasicBlock& bb, IRInst termInst, bool isLikely, bool hasFallthrough) {
-    inlineDelaySlot(func, bb, isLikely);
-    bb.instructions.push_back(std::move(termInst));
+void IRLifter::emitTerminator(IRFunction& func, uint32_t blockIdx, IRInst termInst, bool isLikely, bool hasFallthrough) {
+    inlineDelaySlot(func, blockIdx, isLikely);
+    func.blocks[blockIdx].instructions.push_back(std::move(termInst));
 
     if (hasFallthrough && currentInstrIndex_ + 2 < currentDisasm_->size()) {
         uint32_t fallAddr = (*currentDisasm_)[currentInstrIndex_ + 2].addr;
         IRInst jmp;
         jmp.op = IROp::IR_JUMP;
         jmp.branchTarget = getOrCreateBlock(func, fallAddr);
-        jmp.srcMipsAddr = termInst.srcAddress;
-        bb.instructions.push_back(std::move(jmp));
+        jmp.srcAddress = termInst.srcAddress;
+        func.blocks[blockIdx].instructions.push_back(std::move(jmp));
         
-        bb.successors.push_back(jmp.branchTarget);
-        func.blocks[jmp.branchTarget].predecessors.push_back(bb.index);
+        func.blocks[blockIdx].successors.push_back(jmp.branchTarget);
+        func.blocks[jmp.branchTarget].predecessors.push_back(blockIdx);
     }
 }
 
