@@ -453,15 +453,16 @@ void IRLifter::liftUnhandled(IRFunction& func, uint32_t blockIdx,
     func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
-void IRLifter::inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isLikely) {
+void IRLifter::inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isLikely, std::optional<ir::ValueId> condId) {
     if (currentInstrIndex_ + 1 >= currentDisasm_->size()) return;
     
     const GhidraInstruction& delaySlotInst = (*currentDisasm_)[currentInstrIndex_ + 1];
     MIPSFields f = decodeFields(delaySlotInst.rawBytes);
     
-    if (isLikely) {
+    if (isLikely && condId) {
         ir::IRInst markIfLikely;
         markIfLikely.op = ir::IROp::IR_IF_LIKELY;
+        markIfLikely.operands.push_back(*condId);
         func.blocks[blockIdx].instructions.push_back(std::move(markIfLikely));
     }
     
@@ -487,7 +488,12 @@ void IRLifter::inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isL
 }
 
 void IRLifter::emitTerminator(IRFunction& func, uint32_t blockIdx, IRInst termInst, bool isLikely, bool hasFallthrough) {
-    inlineDelaySlot(func, blockIdx, isLikely);
+    std::optional<ir::ValueId> condId = std::nullopt;
+    if (isLikely && termInst.op == IROp::IR_BRANCH && !termInst.operands.empty()) {
+        condId = termInst.operands[0];
+    }
+    
+    inlineDelaySlot(func, blockIdx, isLikely, condId);
     func.blocks[blockIdx].instructions.push_back(std::move(termInst));
 
     if (hasFallthrough && currentInstrIndex_ + 2 < currentDisasm_->size()) {

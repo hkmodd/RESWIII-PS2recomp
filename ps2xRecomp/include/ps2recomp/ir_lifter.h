@@ -157,7 +157,7 @@ private:
 
     uint32_t getOrCreateBlock(ir::IRFunction& func, uint32_t addr);
 
-    void inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isLikely);
+    void inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isLikely, std::optional<ir::ValueId> condId = std::nullopt);
     void emitTerminator(ir::IRFunction& func, uint32_t blockIdx, ir::IRInst termInst, bool isLikely = false, bool hasFallthrough = true);
 
     const std::vector<GhidraInstruction>* currentDisasm_ = nullptr;
