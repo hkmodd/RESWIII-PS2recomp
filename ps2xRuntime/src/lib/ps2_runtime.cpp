@@ -175,6 +175,11 @@ namespace
 
     void raiseCop0Exception(R5900Context *ctx, uint32_t exceptionCode, bool tlbRefill = false)
     {
+        if (exceptionCode == EXCEPTION_UNKNOWN_INSTRUCTION) {
+            std::cerr << "[FATAL] Unhandled Instruction. PC: 0x" << std::hex << ctx->pc << std::dec << std::endl;
+            std::abort();
+        }
+        
         if (ctx->in_delay_slot)
         {
             ctx->cop0_epc = ctx->branch_pc;

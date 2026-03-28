@@ -268,7 +268,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         }
         case IROp::IR_NOP:
             if (!inst.comment.empty() && inst.comment.find("[UNHANDLED]") == 0) {
-                out << "printf(\"" << inst.comment << " at %08X\\n\", 0x" << std::hex << inst.srcAddress << std::dec << ");";
+                out << "runtime->SignalException(ctx, EXCEPTION_UNKNOWN_INSTRUCTION); return; // " << inst.comment;
             } else {
                 out << "// NOP";
             }
@@ -349,7 +349,11 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "_mm_sra_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
             break;
         default:
-            out << "PS2_UNIMPLEMENTED_INSTRUCTION(0x" << std::hex << inst.srcAddress << std::dec << "U, \"" << getOpString(inst.op) << "\")";
+            if (inst.result.type != IRType::Void) {
+                out << "([&]() -> " << getCType(inst.result.type) << " { runtime->SignalException(ctx, EXCEPTION_UNKNOWN_INSTRUCTION); std::abort(); return " << getCType(inst.result.type) << "{}; })() /* UNHANDLED OPCODE: " << getOpString(inst.op) << " */";
+            } else {
+                out << "runtime->SignalException(ctx, EXCEPTION_UNKNOWN_INSTRUCTION); return; // UNHANDLED OPCODE: " << getOpString(inst.op);
+            }
             break;
     }
 

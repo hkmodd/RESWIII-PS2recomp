@@ -39,6 +39,7 @@ enum PS2Exception
     EXCEPTION_RESERVED_INSTRUCTION = 0x0A,
     EXCEPTION_INTEGER_OVERFLOW = 0x0C, // From MIPS spec
     EXCEPTION_TRAP = 0x0D,             // Trap instruction condition met
+    EXCEPTION_UNKNOWN_INSTRUCTION = 0x99, // Unhandled MIPS instruction (Compiler Kill-Switch)
 };
 
 // PS2 CPU context (R5900)
