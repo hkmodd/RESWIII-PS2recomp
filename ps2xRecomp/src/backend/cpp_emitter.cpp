@@ -267,7 +267,11 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             break;
         }
         case IROp::IR_NOP:
-            out << "// NOP";
+            if (!inst.comment.empty() && inst.comment.find("[UNHANDLED]") == 0) {
+                out << "printf(\"" << inst.comment << " at %08X\\n\", 0x" << std::hex << inst.srcAddress << std::dec << ");";
+            } else {
+                out << "// NOP";
+            }
             break;
         case IROp::IR_FADD:
             out << getValueName(inst.operands[0]) << " + " << getValueName(inst.operands[1]);
