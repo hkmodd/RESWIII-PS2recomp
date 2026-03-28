@@ -16,7 +16,7 @@ void IRLifter::emitCondBranch(IRFunction& func, uint32_t blockIdx,
     func.blocks[blockIdx].instructions.push_back(std::move(cmp));
 
     uint32_t tgtIdx = getOrCreateBlock(func, targetAddr);
-    uint32_t fallIdx = 0;
+
     // fall-through block is wired in liftFunction's post-pass
 
     IRInst br;
@@ -151,6 +151,7 @@ void IRLifter::liftJR(IRFunction& func, uint32_t blockIdx,
         IRInst ret;
         ret.op = IROp::IR_RETURN;
         ret.srcAddress = instr.addr;
+        ret.operands.push_back(rs);
         emitTerminator(func, blockIdx, std::move(ret), false, false);
     } else {
         // Indirect jump — check if it's a resolved jump table

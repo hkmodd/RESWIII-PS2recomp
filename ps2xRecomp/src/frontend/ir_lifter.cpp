@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdio>
 #include <sstream>
+#include <iostream>
 
 namespace ps2recomp {
 
@@ -226,6 +227,7 @@ std::optional<IRFunction> IRLifter::liftFunction(
     func.mipsEndAddr = funcInfo.endAddr;
 
     stats_.totalInstructions = static_cast<uint32_t>(disasm.size());
+    std::cout << "\nLifting Function: " << func.name << "\n";
 
     // Pass 1: find block boundaries
     auto blockStarts = findBlockBoundaries(disasm);
@@ -269,7 +271,14 @@ std::optional<IRFunction> IRLifter::liftFunction(
         }
 
         auto* bb = func.getBlock(currentBlockIdx);
-        if (!bb) continue;
+        if (!bb) {
+            std::cout << "ERROR: Invalid block idx " << currentBlockIdx << "\n";
+            continue;
+        }
+
+        if (i < 5 || i > disasm.size() - 5) {
+            std::cout << "Lifting inst: " << instr.mnemonic << " at " << std::hex << instr.addr << " with bb idx: " << std::dec << currentBlockIdx << "\n";
+        }
 
         bb->mipsEndAddr = instr.addr + 4;
 

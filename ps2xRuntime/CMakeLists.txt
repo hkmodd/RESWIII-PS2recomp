@@ -41,10 +41,10 @@ file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
 )
 
 # Grab all the chunked decompiled .cpp files from the output directory
-file(GLOB STARWARS_CHUNKS CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/../output/starwars_*.cpp"
+file(GLOB DECOMPILED_CHUNKS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../output/*.cpp"
 )
-list(APPEND RUNNER_SRC_FILES ${STARWARS_CHUNKS})
+list(APPEND RUNNER_SRC_FILES ${DECOMPILED_CHUNKS})
 
 # Remove the dummy register_functions and use the generated one
 list(REMOVE_ITEM RUNNER_SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/register_functions.cpp")
