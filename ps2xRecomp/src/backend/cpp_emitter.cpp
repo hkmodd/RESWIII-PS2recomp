@@ -350,10 +350,16 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "_mm_sra_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
             break;
         case IROp::IR_SYSCALL:
-            out << "runtime->SignalException(ctx, EXCEPTION_SYSCALL); return";
+            out << "runtime->handleSyscall(rdram, ctx)";
             break;
         case IROp::IR_BREAK:
             out << "runtime->SignalException(ctx, EXCEPTION_BREAKPOINT); return";
+            break;
+        case IROp::IR_EI:
+            out << "ctx->cop0_status |= 0x10000 /* ei */";
+            break;
+        case IROp::IR_DI:
+            out << "ctx->cop0_status &= ~0x10000 /* di */";
             break;
         default:
             if (inst.result.type != IRType::Void) {

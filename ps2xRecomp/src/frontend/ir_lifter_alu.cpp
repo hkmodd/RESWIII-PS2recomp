@@ -341,6 +341,13 @@ void IRLifter::liftMOVE(IRFunction& func, uint32_t blockIdx,
     else liftOR(func, blockIdx, instr, f);
 }
 
+void IRLifter::liftDMOVE(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields& f) {
+    // dmove is just daddu rd, rs, zero mapping
+    liftDADDU(func, blockIdx, instr, f);
+}
+
 void IRLifter::liftCLEAR(IRFunction& func, uint32_t blockIdx,
                           const GhidraInstruction& instr,
                           const MIPSFields& f) {

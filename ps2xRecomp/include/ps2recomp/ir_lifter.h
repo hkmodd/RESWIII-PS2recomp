@@ -259,9 +259,12 @@ private:
     void liftBREAK  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftSYNC   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftNOP    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftEI     (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDI     (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Pseudo / Synthetic
     void liftMOVE   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDMOVE  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftCLEAR  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftLI     (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftNEGU   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);

@@ -34,6 +34,9 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["addiu"]  = &IRLifter::liftADDIU;
     dispatchTable_["daddi"]  = &IRLifter::liftDADDI;
     dispatchTable_["daddiu"] = &IRLifter::liftDADDIU;
+    dispatchTable_["move"]   = &IRLifter::liftMOVE;
+    dispatchTable_["dmove"]  = &IRLifter::liftDMOVE;
+    dispatchTable_["li"]     = &IRLifter::liftLI;
     // Logic
     dispatchTable_["and"]    = &IRLifter::liftAND;
     dispatchTable_["andi"]   = &IRLifter::liftANDI;
@@ -93,6 +96,8 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["bltz"]   = &IRLifter::liftBLTZ;
     dispatchTable_["beql"]   = &IRLifter::liftBEQL;
     dispatchTable_["bnel"]   = &IRLifter::liftBNEL;
+    dispatchTable_["beqz"]   = &IRLifter::liftBEQ;
+    dispatchTable_["bnez"]   = &IRLifter::liftBNE;
     // Jumps / Calls
     dispatchTable_["j"]      = &IRLifter::liftJ;
     dispatchTable_["jal"]    = &IRLifter::liftJAL;
@@ -105,6 +110,8 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["syscall"]= &IRLifter::liftSYSCALL;
     dispatchTable_["break"]  = &IRLifter::liftBREAK;
     dispatchTable_["sync"]   = &IRLifter::liftSYNC;
+    dispatchTable_["ei"]     = &IRLifter::liftEI;
+    dispatchTable_["di"]     = &IRLifter::liftDI;
     dispatchTable_["nop"]    = &IRLifter::liftNOP;
     // Pseudo / Synthetic
     dispatchTable_["move"]   = &IRLifter::liftMOVE;
@@ -181,6 +188,7 @@ std::unordered_set<uint32_t> IRLifter::findBlockBoundaries(
 
         // Check for branch instructions (I-type with PC-relative offset)
         if (instr.mnemonic == "beq"  || instr.mnemonic == "bne"  ||
+            instr.mnemonic == "beqz" || instr.mnemonic == "bnez" ||
             instr.mnemonic == "bgez" || instr.mnemonic == "bgtz" ||
             instr.mnemonic == "blez" || instr.mnemonic == "bltz" ||
             instr.mnemonic == "beql" || instr.mnemonic == "bnel" ||
@@ -462,6 +470,7 @@ ValueId IRLifter::emitAddrCalc(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftUnhandled(IRFunction& func, uint32_t blockIdx,
                               const GhidraInstruction& instr,
                               const MIPSFields&) {
+    std::cout << "WARNING: UNHANDLED MNEMONIC: '" << instr.mnemonic << "' at PC 0x" << std::hex << instr.addr << std::dec << "\n";
     IRInst inst;
     inst.op = IROp::IR_NOP;
     inst.srcAddress = instr.addr;

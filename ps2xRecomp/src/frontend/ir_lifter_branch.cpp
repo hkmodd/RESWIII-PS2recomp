@@ -242,6 +242,24 @@ void IRLifter::liftBREAK(IRFunction& func, uint32_t blockIdx,
     func.blocks[blockIdx].instructions.push_back(std::move(inst));
 }
 
+void IRLifter::liftEI(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields&) {
+    IRInst inst;
+    inst.op = IROp::IR_EI;
+    inst.srcAddress = instr.addr;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+}
+
+void IRLifter::liftDI(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields&) {
+    IRInst inst;
+    inst.op = IROp::IR_DI;
+    inst.srcAddress = instr.addr;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+}
+
 void IRLifter::liftSYNC(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields&) {
