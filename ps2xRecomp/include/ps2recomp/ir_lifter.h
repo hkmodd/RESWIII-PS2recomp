@@ -22,6 +22,7 @@
 #include "jump_resolver.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -130,6 +131,8 @@ private:
     // $zero always returns a constant 0.
     ir::ValueId emitGPRRead(ir::IRFunction& func, uint32_t blockIdx,
                             uint8_t regIdx, uint32_t srcAddr);
+    ir::ValueId emitGPRRead(ir::IRFunction& func, uint32_t blockIdx,
+                            uint8_t regIdx, uint32_t srcAddr, ir::IRType type);
     ir::ValueId emitFPRRead(ir::IRFunction& func, uint32_t blockIdx,
                             uint8_t regIdx, uint32_t srcAddr);
 
@@ -176,6 +179,7 @@ private:
     void liftDADDU (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftDADDI (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftDADDIU(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSUBU (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Logic
     void liftAND   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
@@ -193,6 +197,15 @@ private:
     void liftSLLV  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftSRLV  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftSRAV  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSLL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSRL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSRA  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSLL32(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSRL32(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSRA32(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSLLV (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSRLV (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDSRAV (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Set-on-less-than
     void liftSLT   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
@@ -224,6 +237,8 @@ private:
     void liftLQ    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftLWL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftLWR   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLDL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftLDR   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Memory stores
     void liftSB    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
@@ -233,6 +248,8 @@ private:
     void liftSQ    (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftSWL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftSWR   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSDL   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSDR   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Branches
     void liftBEQ   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
@@ -243,6 +260,10 @@ private:
     void liftBLTZ  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftBEQL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftBNEL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBGEZL (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBGTZL (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBLEZL (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBLTZL (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Jumps / Calls
     void liftJ     (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
@@ -293,6 +314,30 @@ private:
     void liftBC1F   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftBC1TL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftBC1FL  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+
+    // FPU extended (PS2-specific)
+    void liftMADD_S (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMSUB_S (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMAX_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMIN_S  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMULA_S (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftSUBA_S (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+
+    // COP0 / System
+    void liftMFC0   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMTC0   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftBC0F   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftCACHE  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftTLBWI  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMTSAB  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMOVEQ  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+
+    // Pipeline-1 HI/LO
+    void liftMULT1  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftDIV1   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMFHI1  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMFLO1  (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftMADD   (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
     // Fallback for unhandled instructions
     void liftUnhandled(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);

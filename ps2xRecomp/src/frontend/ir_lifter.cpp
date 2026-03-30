@@ -29,6 +29,7 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["subu"]   = &IRLifter::liftSUBU;
     dispatchTable_["dadd"]   = &IRLifter::liftDADD;
     dispatchTable_["daddu"]  = &IRLifter::liftDADDU;
+    dispatchTable_["dsubu"]  = &IRLifter::liftDSUBU;
     // Integer ALU — I-type
     dispatchTable_["addi"]   = &IRLifter::liftADDI;
     dispatchTable_["addiu"]  = &IRLifter::liftADDIU;
@@ -52,6 +53,15 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["sllv"]   = &IRLifter::liftSLLV;
     dispatchTable_["srlv"]   = &IRLifter::liftSRLV;
     dispatchTable_["srav"]   = &IRLifter::liftSRAV;
+    dispatchTable_["dsll"]   = &IRLifter::liftDSLL;
+    dispatchTable_["dsrl"]   = &IRLifter::liftDSRL;
+    dispatchTable_["dsra"]   = &IRLifter::liftDSRA;
+    dispatchTable_["dsll32"] = &IRLifter::liftDSLL32;
+    dispatchTable_["dsrl32"] = &IRLifter::liftDSRL32;
+    dispatchTable_["dsra32"] = &IRLifter::liftDSRA32;
+    dispatchTable_["dsllv"]  = &IRLifter::liftDSLLV;
+    dispatchTable_["dsrlv"]  = &IRLifter::liftDSRLV;
+    dispatchTable_["dsrav"]  = &IRLifter::liftDSRAV;
     // Set-on-less-than
     dispatchTable_["slt"]    = &IRLifter::liftSLT;
     dispatchTable_["sltu"]   = &IRLifter::liftSLTU;
@@ -79,6 +89,8 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["lq"]     = &IRLifter::liftLQ;
     dispatchTable_["lwl"]    = &IRLifter::liftLWL;
     dispatchTable_["lwr"]    = &IRLifter::liftLWR;
+    dispatchTable_["ldl"]    = &IRLifter::liftLDL;
+    dispatchTable_["ldr"]    = &IRLifter::liftLDR;
     // Memory stores
     dispatchTable_["sb"]     = &IRLifter::liftSB;
     dispatchTable_["sh"]     = &IRLifter::liftSH;
@@ -87,6 +99,8 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["sq"]     = &IRLifter::liftSQ;
     dispatchTable_["swl"]    = &IRLifter::liftSWL;
     dispatchTable_["swr"]    = &IRLifter::liftSWR;
+    dispatchTable_["sdl"]    = &IRLifter::liftSDL;
+    dispatchTable_["sdr"]    = &IRLifter::liftSDR;
     // Branches
     dispatchTable_["beq"]    = &IRLifter::liftBEQ;
     dispatchTable_["bne"]    = &IRLifter::liftBNE;
@@ -96,6 +110,10 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["bltz"]   = &IRLifter::liftBLTZ;
     dispatchTable_["beql"]   = &IRLifter::liftBEQL;
     dispatchTable_["bnel"]   = &IRLifter::liftBNEL;
+    dispatchTable_["bgezl"]  = &IRLifter::liftBGEZL;
+    dispatchTable_["bgtzl"]  = &IRLifter::liftBGTZL;
+    dispatchTable_["blezl"]  = &IRLifter::liftBLEZL;
+    dispatchTable_["bltzl"]  = &IRLifter::liftBLTZL;
     dispatchTable_["beqz"]   = &IRLifter::liftBEQ;
     dispatchTable_["bnez"]   = &IRLifter::liftBNE;
     // Jumps / Calls
@@ -143,6 +161,39 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["bc1f"]   = &IRLifter::liftBC1F;
     dispatchTable_["bc1tl"]  = &IRLifter::liftBC1TL;
     dispatchTable_["bc1fl"]  = &IRLifter::liftBC1FL;
+
+    // ── Phase 1: FPU Extended (PS2-specific) ────────────────────────────
+    dispatchTable_["madd.s"]  = &IRLifter::liftMADD_S;
+    dispatchTable_["madd.S"]  = &IRLifter::liftMADD_S;
+    dispatchTable_["_madd.S"] = &IRLifter::liftMADD_S;
+    dispatchTable_["msub.s"]  = &IRLifter::liftMSUB_S;
+    dispatchTable_["msub.S"]  = &IRLifter::liftMSUB_S;
+    dispatchTable_["_msub.S"] = &IRLifter::liftMSUB_S;
+    dispatchTable_["max.s"]   = &IRLifter::liftMAX_S;
+    dispatchTable_["max.S"]   = &IRLifter::liftMAX_S;
+    dispatchTable_["_max.S"]  = &IRLifter::liftMAX_S;
+    dispatchTable_["min.s"]   = &IRLifter::liftMIN_S;
+    dispatchTable_["min.S"]   = &IRLifter::liftMIN_S;
+    dispatchTable_["mula.s"]  = &IRLifter::liftMULA_S;
+    dispatchTable_["mula.S"]  = &IRLifter::liftMULA_S;
+    dispatchTable_["suba.s"]  = &IRLifter::liftSUBA_S;
+    dispatchTable_["suba.S"]  = &IRLifter::liftSUBA_S;
+
+    // ── Phase 2: COP0 / System / Misc ───────────────────────────────────
+    dispatchTable_["mfc0"]    = &IRLifter::liftMFC0;
+    dispatchTable_["mtc0"]    = &IRLifter::liftMTC0;
+    dispatchTable_["bc0f"]    = &IRLifter::liftBC0F;
+    dispatchTable_["cache"]   = &IRLifter::liftCACHE;
+    dispatchTable_["tlbwi"]   = &IRLifter::liftTLBWI;
+    dispatchTable_["mtsab"]   = &IRLifter::liftMTSAB;
+    dispatchTable_["moveq"]   = &IRLifter::liftMOVEQ;
+
+    // ── Phase 3: Pipeline-1 HI/LO ───────────────────────────────────────
+    dispatchTable_["mult1"]   = &IRLifter::liftMULT1;
+    dispatchTable_["div1"]    = &IRLifter::liftDIV1;
+    dispatchTable_["mfhi1"]   = &IRLifter::liftMFHI1;
+    dispatchTable_["mflo1"]   = &IRLifter::liftMFLO1;
+    dispatchTable_["madd"]    = &IRLifter::liftMADD;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -364,6 +415,23 @@ ValueId IRLifter::emitGPRRead(IRFunction& func, uint32_t blockIdx,
     return vid;
 }
 
+ValueId IRLifter::emitGPRRead(IRFunction& func, uint32_t blockIdx,
+                               uint8_t regIdx, uint32_t srcAddr, IRType type) {
+    // $zero is always 0
+    if (regIdx == 0) {
+        auto c = makeConst(func, type, 0);
+        ValueId cid = c.result.id;
+        func.blocks[blockIdx].instructions.push_back(std::move(c));
+        return cid;
+    }
+
+    auto inst = makeRegRead(func, type, IRReg::gpr(regIdx));
+    inst.srcAddress = srcAddr;
+    ValueId vid = inst.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+    return vid;
+}
+
 ValueId IRLifter::emitFPRRead(IRFunction& func, uint32_t blockIdx,
                                uint8_t regIdx, uint32_t srcAddr) {
     auto inst = makeRegRead(func, IRType::F32, IRReg::fpr(regIdx));
@@ -486,6 +554,9 @@ void IRLifter::inlineDelaySlot(ir::IRFunction& func, uint32_t blockIdx, bool isL
     MIPSFields f = decodeFields(delaySlotInst.rawBytes);
     
     std::string mnemonic = delaySlotInst.mnemonic;
+    for (auto& c : mnemonic) {
+        c = std::tolower(static_cast<unsigned char>(c));
+    }
     if (!mnemonic.empty() && mnemonic[0] == '_') {
         mnemonic = mnemonic.substr(1);
     }

@@ -148,6 +148,9 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_ZEXT:
             out << "(" << getCType(inst.result.type) << ")" << getValueName(inst.operands[0]);
             break;
+        case IROp::IR_TRUNC:
+            out << "(" << getCType(inst.result.type) << ")" << getValueName(inst.operands[0]);
+            break;
         case IROp::IR_SEXT:
             // Need to sign extend from the operand's type
             {
@@ -266,6 +269,123 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << macroPrefix << "(" << getValueName(inst.operands[0]) << ", " << valStr << ")";
             break;
         }
+        case IROp::IR_LOAD_LEFT: {
+            // operands[0] = addr (unaligned), operands[1] = old rt value
+            std::string addrV = getValueName(inst.operands[0]);
+            std::string rtV   = getValueName(inst.operands[1]);
+            if (inst.memType == IRType::I64) {
+                // LDL: Load Doubleword Left
+                out << "([&]() -> uint64_t { "
+                    << "uint32_t addr_ = " << addrV << "; "
+                    << "uint32_t aligned_ = addr_ & ~7u; "
+                    << "uint32_t offset_ = addr_ & 7u; "
+                    << "uint64_t mem_ = READ64(aligned_); "
+                    << "uint32_t shift_ = (7u - offset_) << 3; "
+                    << "uint64_t keepMask_ = (shift_ == 0) ? 0ull : ((1ull << shift_) - 1ull); "
+                    << "return (" << rtV << " & keepMask_) | (mem_ << shift_); "
+                    << "})()";
+            } else {
+                // LWL: Load Word Left
+                out << "([&]() -> uint32_t { "
+                    << "uint32_t addr_ = " << addrV << "; "
+                    << "uint32_t aligned_ = addr_ & ~3u; "
+                    << "uint32_t offset_ = addr_ & 3u; "
+                    << "uint32_t mem_ = READ32(aligned_); "
+                    << "uint32_t shift_ = (3u - offset_) << 3; "
+                    << "uint32_t keepMask_ = (shift_ == 0) ? 0u : ((1u << shift_) - 1u); "
+                    << "return (int32_t)((" << rtV << " & keepMask_) | (mem_ << shift_)); "
+                    << "})()";
+            }
+            break;
+        }
+        case IROp::IR_LOAD_RIGHT: {
+            // operands[0] = addr (unaligned), operands[1] = old rt value
+            std::string addrV = getValueName(inst.operands[0]);
+            std::string rtV   = getValueName(inst.operands[1]);
+            if (inst.memType == IRType::I64) {
+                // LDR: Load Doubleword Right
+                out << "([&]() -> uint64_t { "
+                    << "uint32_t addr_ = " << addrV << "; "
+                    << "uint32_t aligned_ = addr_ & ~7u; "
+                    << "uint32_t offset_ = addr_ & 7u; "
+                    << "uint64_t mem_ = READ64(aligned_); "
+                    << "uint32_t shift_ = offset_ << 3; "
+                    << "uint64_t keepMask_ = (offset_ == 0) ? 0ull : (0xFFFFFFFFFFFFFFFFull << ((8u - offset_) << 3)); "
+                    << "return (" << rtV << " & keepMask_) | (mem_ >> shift_); "
+                    << "})()";
+            } else {
+                // LWR: Load Word Right
+                out << "([&]() -> uint32_t { "
+                    << "uint32_t addr_ = " << addrV << "; "
+                    << "uint32_t aligned_ = addr_ & ~3u; "
+                    << "uint32_t offset_ = addr_ & 3u; "
+                    << "uint32_t mem_ = READ32(aligned_); "
+                    << "uint32_t shift_ = offset_ << 3; "
+                    << "uint32_t keepMask_ = (offset_ == 0) ? 0u : (0xFFFFFFFFu << ((4u - offset_) << 3)); "
+                    << "uint32_t merged32_ = (" << rtV << " & keepMask_) | (mem_ >> shift_); "
+                    << "return merged32_; "
+                    << "})()";
+            }
+            break;
+        }
+        case IROp::IR_STORE_LEFT: {
+            // operands[0] = addr (unaligned), operands[1] = rt value
+            std::string addrV = getValueName(inst.operands[0]);
+            std::string valV  = getValueName(inst.operands[1]);
+            if (inst.memType == IRType::I64) {
+                // SDL: Store Doubleword Left
+                out << "{ uint32_t addr_ = " << addrV << "; "
+                    << "uint32_t aligned_ = addr_ & ~7u; "
+                    << "uint32_t offset_ = addr_ & 7u; "
+                    << "uint32_t shift_ = (7u - offset_) << 3; "
+                    << "uint64_t mask_ = 0xFFFFFFFFFFFFFFFFull >> shift_; "
+                    << "uint64_t old_ = READ64(aligned_); "
+                    << "uint64_t val_ = " << valV << "; "
+                    << "uint64_t new_ = (old_ & ~mask_) | ((val_ >> shift_) & mask_); "
+                    << "WRITE64(aligned_, new_); }";
+            } else {
+                // SWL: Store Word Left
+                out << "{ uint32_t addr_ = " << addrV << "; "
+                    << "uint32_t aligned_ = addr_ & ~3u; "
+                    << "uint32_t offset_ = addr_ & 3u; "
+                    << "uint32_t shift_ = (3u - offset_) << 3; "
+                    << "uint32_t mask_ = 0xFFFFFFFFu >> shift_; "
+                    << "uint32_t old_ = READ32(aligned_); "
+                    << "uint32_t val_ = " << valV << "; "
+                    << "uint32_t new_ = (old_ & ~mask_) | ((val_ >> shift_) & mask_); "
+                    << "WRITE32(aligned_, new_); }";
+            }
+            break;
+        }
+        case IROp::IR_STORE_RIGHT: {
+            // operands[0] = addr (unaligned), operands[1] = rt value
+            std::string addrV = getValueName(inst.operands[0]);
+            std::string valV  = getValueName(inst.operands[1]);
+            if (inst.memType == IRType::I64) {
+                // SDR: Store Doubleword Right
+                out << "{ uint32_t addr_ = " << addrV << "; "
+                    << "uint32_t aligned_ = addr_ & ~7u; "
+                    << "uint32_t offset_ = addr_ & 7u; "
+                    << "uint32_t shift_ = offset_ << 3; "
+                    << "uint64_t mask_ = 0xFFFFFFFFFFFFFFFFull << shift_; "
+                    << "uint64_t old_ = READ64(aligned_); "
+                    << "uint64_t val_ = " << valV << "; "
+                    << "uint64_t new_ = (old_ & ~mask_) | ((val_ << shift_) & mask_); "
+                    << "WRITE64(aligned_, new_); }";
+            } else {
+                // SWR: Store Word Right
+                out << "{ uint32_t addr_ = " << addrV << "; "
+                    << "uint32_t aligned_ = addr_ & ~3u; "
+                    << "uint32_t offset_ = addr_ & 3u; "
+                    << "uint32_t shift_ = offset_ << 3; "
+                    << "uint32_t mask_ = 0xFFFFFFFFu << shift_; "
+                    << "uint32_t old_ = READ32(aligned_); "
+                    << "uint32_t val_ = " << valV << "; "
+                    << "uint32_t new_ = (old_ & ~mask_) | ((val_ << shift_) & mask_); "
+                    << "WRITE32(aligned_, new_); }";
+            }
+            break;
+        }
         case IROp::IR_NOP:
             if (!inst.comment.empty() && inst.comment.find("[UNHANDLED]") == 0) {
                 out << "runtime->SignalException(ctx, EXCEPTION_UNKNOWN_INSTRUCTION); return; // " << inst.comment;
@@ -312,6 +432,40 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             break;
         case IROp::IR_FCMP_LE:
             out << "(" << getValueName(inst.operands[0]) << " <= " << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            break;
+        // ── FPU Extended (PS2) ──────────────────────────────────────────
+        case IROp::IR_FMADD:
+            // acc + (fs * ft)  — operands: [acc, fs, ft]
+            out << "(" << getValueName(inst.operands[0]) << " + ("
+                << getValueName(inst.operands[1]) << " * "
+                << getValueName(inst.operands[2]) << "))";
+            break;
+        case IROp::IR_FMSUB:
+            // acc - (fs * ft)
+            out << "(" << getValueName(inst.operands[0]) << " - ("
+                << getValueName(inst.operands[1]) << " * "
+                << getValueName(inst.operands[2]) << "))";
+            break;
+        case IROp::IR_FMAX:
+            out << "std::fmax(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_FMIN:
+            out << "std::fmin(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_FMULA:
+            // fs * ft  (result stored into accumulator by lifter via reg-write)
+            out << "(" << getValueName(inst.operands[0]) << " * " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_FSUBA:
+            // fs - ft  (result stored into accumulator by lifter via reg-write)
+            out << "(" << getValueName(inst.operands[0]) << " - " << getValueName(inst.operands[1]) << ")";
+            break;
+        // ── Conditional Select ──────────────────────────────────────────
+        case IROp::IR_SELECT:
+            // cond ? operands[1] : operands[2]
+            out << "(" << getValueName(inst.operands[0]) << " ? "
+                << getValueName(inst.operands[1]) << " : "
+                << getValueName(inst.operands[2]) << ")";
             break;
         case IROp::IR_PADDB:
             out << "_mm_add_epi8(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";

@@ -129,10 +129,12 @@ std::optional<ResolvedJumpTable> JumpResolver::resolveJr(
 
     // State for pattern matching
     bool      foundLui    = false;
-    bool      foundLo     = false;
+    bool      foundLwOffset = false;
+    bool      foundAddiu  = false;
     bool      foundSltiu  = false;
     uint16_t  hiImm       = 0;
-    int16_t   loImm       = 0;
+    int16_t   lwOffset    = 0;
+    int16_t   addiuImm    = 0;
     uint32_t  caseCount   = 0;
     std::string luiReg;
     std::string indexReg;
@@ -144,7 +146,7 @@ std::optional<ResolvedJumpTable> JumpResolver::resolveJr(
         // Pattern: lw $jrReg, offset($baseReg) — load from computed table addr
         if (insn.isLw()) {
             std::string dest = extractDestReg(insn.operands);
-            if (dest == jrReg || !foundLo) {
+            if (dest == jrReg || !foundLwOffset) {
                 // Try extracting the lo offset from lw operands
                 // Format: "t0,0x1d0(t1)"
                 auto parenPos = insn.operands.find('(');
@@ -155,22 +157,24 @@ std::optional<ResolvedJumpTable> JumpResolver::resolveJr(
                             commaPos + 1, parenPos - commaPos - 1);
                         while (!offsetStr.empty() && std::isspace(offsetStr.front()))
                             offsetStr.erase(offsetStr.begin());
-                        loImm = static_cast<int16_t>(
+                        lwOffset = static_cast<int16_t>(
                             std::strtol(offsetStr.c_str(), nullptr, 0));
-                        foundLo = true;
+                        foundLwOffset = true;
                     }
                 }
             }
         }
 
         // Pattern: addiu $reg, $reg, lo_imm — adds lo half of table address
-        if (insn.isAddiu() && !foundLo) {
+        if (insn.isAddiu() && !foundAddiu) {
             std::string dest = extractDestReg(insn.operands);
             std::string src  = extractSrcReg1(insn.operands);
             if (dest == src) {
-                loImm = extractLoImm(insn.operands);
-                luiReg = src;  // this register is built from lui + addiu
-                foundLo = true;
+                if (luiReg.empty() || dest == luiReg) {
+                    addiuImm = extractLoImm(insn.operands);
+                    luiReg = src;  // this register is built from lui + addiu
+                    foundAddiu = true;
+                }
             }
         }
 
@@ -210,9 +214,13 @@ std::optional<ResolvedJumpTable> JumpResolver::resolveJr(
     }
 
     // Compute table address
+    int32_t totalLo = 0;
+    if (foundLwOffset) totalLo += lwOffset;
+    if (foundAddiu) totalLo += addiuImm;
+
     uint32_t tableAddr;
-    if (foundLo) {
-        tableAddr = combineHiLo(hiImm, loImm);
+    if (foundLwOffset || foundAddiu) {
+        tableAddr = combineHiLo(hiImm, static_cast<int16_t>(totalLo));
     } else {
         // Only lui found — table might start at hi << 16
         tableAddr = static_cast<uint32_t>(hiImm) << 16;

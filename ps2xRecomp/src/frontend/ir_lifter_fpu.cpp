@@ -226,4 +226,101 @@ void IRLifter::liftBC1FL(IRFunction& func, uint32_t blockIdx,
     liftBC1F(func, blockIdx, instr, f); // likely variant
 }
 
+// ── FPU extended operations (PS2-specific) ──────────────────────────────────
+
+// MADD.S fd, fs, ft — fd = ACC + (fs * ft)
+void IRLifter::liftMADD_S(IRFunction& func, uint32_t blockIdx,
+                           const GhidraInstruction& instr,
+                           const MIPSFields& f) {
+    auto fs  = emitFPRRead(func, blockIdx, f.fs, instr.addr);
+    auto ft  = emitFPRRead(func, blockIdx, f.ft, instr.addr);
+    auto acc = ir::makeRegRead(func, IRType::F32, IRReg::fpuAcc());
+    acc.srcAddress = instr.addr;
+    ValueId accId = acc.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(acc));
+
+    // Build ternary: result = acc + (fs * ft)
+    IRInst inst;
+    inst.op = IROp::IR_FMADD;
+    inst.result = func.allocTypedValue(IRType::F32);
+    inst.operands = {accId, fs, ft};
+    inst.srcAddress = instr.addr;
+    ValueId vid = inst.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+    emitFPRWrite(func, blockIdx, f.fd, vid, instr.addr);
+}
+
+// MSUB.S fd, fs, ft — fd = ACC - (fs * ft)
+void IRLifter::liftMSUB_S(IRFunction& func, uint32_t blockIdx,
+                            const GhidraInstruction& instr,
+                            const MIPSFields& f) {
+    auto fs  = emitFPRRead(func, blockIdx, f.fs, instr.addr);
+    auto ft  = emitFPRRead(func, blockIdx, f.ft, instr.addr);
+    auto acc = ir::makeRegRead(func, IRType::F32, IRReg::fpuAcc());
+    acc.srcAddress = instr.addr;
+    ValueId accId = acc.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(acc));
+
+    IRInst inst;
+    inst.op = IROp::IR_FMSUB;
+    inst.result = func.allocTypedValue(IRType::F32);
+    inst.operands = {accId, fs, ft};
+    inst.srcAddress = instr.addr;
+    ValueId vid = inst.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+    emitFPRWrite(func, blockIdx, f.fd, vid, instr.addr);
+}
+
+// MAX.S fd, fs, ft — fd = max(fs, ft)
+void IRLifter::liftMAX_S(IRFunction& func, uint32_t blockIdx,
+                          const GhidraInstruction& instr,
+                          const MIPSFields& f) {
+    auto fs = emitFPRRead(func, blockIdx, f.fs, instr.addr);
+    auto ft = emitFPRRead(func, blockIdx, f.ft, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_FMAX, IRType::F32, fs, ft, instr.addr);
+    ValueId vid = inst.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+    emitFPRWrite(func, blockIdx, f.fd, vid, instr.addr);
+}
+
+// MIN.S fd, fs, ft — fd = min(fs, ft)
+void IRLifter::liftMIN_S(IRFunction& func, uint32_t blockIdx,
+                          const GhidraInstruction& instr,
+                          const MIPSFields& f) {
+    auto fs = emitFPRRead(func, blockIdx, f.fs, instr.addr);
+    auto ft = emitFPRRead(func, blockIdx, f.ft, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_FMIN, IRType::F32, fs, ft, instr.addr);
+    ValueId vid = inst.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+    emitFPRWrite(func, blockIdx, f.fd, vid, instr.addr);
+}
+
+// MULA.S fs, ft — ACC = fs * ft (no fd destination)
+void IRLifter::liftMULA_S(IRFunction& func, uint32_t blockIdx,
+                           const GhidraInstruction& instr,
+                           const MIPSFields& f) {
+    auto fs = emitFPRRead(func, blockIdx, f.fs, instr.addr);
+    auto ft = emitFPRRead(func, blockIdx, f.ft, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_FMULA, IRType::F32, fs, ft, instr.addr);
+    ValueId vid = inst.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+    auto w = ir::makeRegWrite(IRReg::fpuAcc(), vid);
+    w.srcAddress = instr.addr;
+    func.blocks[blockIdx].instructions.push_back(std::move(w));
+}
+
+// SUBA.S fs, ft — ACC = fs - ft (no fd destination)
+void IRLifter::liftSUBA_S(IRFunction& func, uint32_t blockIdx,
+                           const GhidraInstruction& instr,
+                           const MIPSFields& f) {
+    auto fs = emitFPRRead(func, blockIdx, f.fs, instr.addr);
+    auto ft = emitFPRRead(func, blockIdx, f.ft, instr.addr);
+    auto inst = makeBinaryOp(func, IROp::IR_FSUBA, IRType::F32, fs, ft, instr.addr);
+    ValueId vid = inst.result.id;
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));
+    auto w = ir::makeRegWrite(IRReg::fpuAcc(), vid);
+    w.srcAddress = instr.addr;
+    func.blocks[blockIdx].instructions.push_back(std::move(w));
+}
+
 } // namespace ps2recomp

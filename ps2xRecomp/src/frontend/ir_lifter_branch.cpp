@@ -117,6 +117,44 @@ void IRLifter::liftBLTZ(IRFunction& func, uint32_t blockIdx,
     emitCondBranch(func, blockIdx, IROp::IR_SLT, rs, zero, target, instr.addr);
 }
 
+void IRLifter::liftBGEZL(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields& f) {
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto zero = emitConst32(func, blockIdx, 0);
+    uint32_t target = computeBranchTarget(instr.addr, f.simm16);
+    // isLikely = true
+    emitCondBranch(func, blockIdx, IROp::IR_SGE, rs, zero, target, instr.addr, true);
+}
+
+void IRLifter::liftBGTZL(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields& f) {
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto zero = emitConst32(func, blockIdx, 0);
+    uint32_t target = computeBranchTarget(instr.addr, f.simm16);
+    emitCondBranch(func, blockIdx, IROp::IR_SGT, rs, zero, target, instr.addr, true);
+}
+
+void IRLifter::liftBLEZL(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields& f) {
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto zero = emitConst32(func, blockIdx, 0);
+    uint32_t target = computeBranchTarget(instr.addr, f.simm16);
+    emitCondBranch(func, blockIdx, IROp::IR_SLE, rs, zero, target, instr.addr, true);
+}
+
+void IRLifter::liftBLTZL(IRFunction& func, uint32_t blockIdx,
+                         const GhidraInstruction& instr,
+                         const MIPSFields& f) {
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
+    auto zero = emitConst32(func, blockIdx, 0);
+    uint32_t target = computeBranchTarget(instr.addr, f.simm16);
+    emitCondBranch(func, blockIdx, IROp::IR_SLT, rs, zero, target, instr.addr, true);
+}
+
+
 // ── J / JAL / JR / JALR ────────────────────────────────────────────────────
 
 void IRLifter::liftJ(IRFunction& func, uint32_t blockIdx,
