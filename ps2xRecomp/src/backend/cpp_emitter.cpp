@@ -531,6 +531,127 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_QFSRV: out << "MMI_QFSRV(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[2]) << ")"; break;
         
         case IROp::IR_PMFHL: out << "MMI_PMFHL(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[2]) << ")"; break;
+
+        // ── Phase 5: VU0 Arithmetic ─────────────────────────────────────────
+        case IROp::IR_VU_ADD:
+            out << "VU0_ADD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_SUB:
+            out << "VU0_SUB(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_MUL:
+            out << "VU0_MUL(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_MADD:
+            out << "VU0_MADD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << getValueName(inst.operands[2])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_MSUB:
+            out << "VU0_MSUB(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << getValueName(inst.operands[2])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_MAX:
+            out << "VU0_MAX(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_MINI:
+            out << "VU0_MINI(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_ABS:
+            out << "VU0_ABS(" << getValueName(inst.operands[0])
+                << ", " << (int)inst.vuDestMask << ")";
+            break;
+        case IROp::IR_VU_OPMULA:
+            out << "VU0_OPMULA(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_VU_OPMSUB:
+            out << "VU0_OPMSUB(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << getValueName(inst.operands[2]) << ")";
+            break;
+        // VU0 Accumulator-writing
+        case IROp::IR_VU_ADDA:
+            out << "VU0_ADDA(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_SUBA:
+            out << "VU0_SUBA(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_MULA:
+            out << "VU0_MULA(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_MADDA:
+            out << "VU0_MADDA(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << getValueName(inst.operands[2])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        case IROp::IR_VU_MSUBA:
+            out << "VU0_MSUBA(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << getValueName(inst.operands[2])
+                << ", " << (int)inst.vuDestMask << ", " << (int)inst.vuBroadcast << ")";
+            break;
+        // VU0 Conversion
+        case IROp::IR_VU_ITOF0:  out << "VU0_ITOF0("  << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")"; break;
+        case IROp::IR_VU_ITOF4:  out << "VU0_ITOF4("  << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")"; break;
+        case IROp::IR_VU_ITOF12: out << "VU0_ITOF12(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")"; break;
+        case IROp::IR_VU_ITOF15: out << "VU0_ITOF15(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")"; break;
+        case IROp::IR_VU_FTOI0:  out << "VU0_FTOI0("  << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")"; break;
+        case IROp::IR_VU_FTOI4:  out << "VU0_FTOI4("  << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")"; break;
+        case IROp::IR_VU_FTOI12: out << "VU0_FTOI12(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")"; break;
+        case IROp::IR_VU_FTOI15: out << "VU0_FTOI15(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")"; break;
+        // VU0 Data Movement
+        case IROp::IR_VU_MOVE:
+            out << "VU0_MOVE(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")";
+            break;
+        case IROp::IR_VU_MR32:
+            out << "VU0_MR32(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")";
+            break;
+        // VU0 Division / Sqrt
+        case IROp::IR_VU_DIV:
+            out << "VU0_DIV(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuFSF << ", " << (int)inst.vuFTF << ")";
+            break;
+        case IROp::IR_VU_SQRT:
+            out << "VU0_SQRT(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuFTF << ")";
+            break;
+        case IROp::IR_VU_RSQRT:
+            out << "VU0_RSQRT(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1])
+                << ", " << (int)inst.vuFSF << ", " << (int)inst.vuFTF << ")";
+            break;
+        case IROp::IR_VU_WAITQ:
+            out << "/* VWAITQ: nop on recompiled */";
+            break;
+        // VU0 Clip
+        case IROp::IR_VU_CLIP:
+            out << "VU0_CLIP(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        // VU0 Transfer
+        case IROp::IR_VU_QMFC2: out << getValueName(inst.operands[0]); break;
+        case IROp::IR_VU_QMTC2: out << getValueName(inst.operands[0]); break;
+        case IROp::IR_VU_CFC2:  out << "(uint32_t)(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_VU_CTC2:  out << "(uint16_t)(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_VU_MTIR:  out << "VU0_MTIR(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuFSF << ")"; break;
+        // VU0 Load/Store
+        case IROp::IR_LOAD_VF:
+            out << "VU0_LOAD_VF(rdram, " << getValueName(inst.operands[0]) << ")";
+            break;
+        case IROp::IR_STORE_VF:
+            out << "VU0_STORE_VF(rdram, " << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
+            break;
+        case IROp::IR_VU_LQI:
+            out << "VU0_LQI(ctx, " << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")";
+            break;
+        case IROp::IR_VU_LQD:
+            out << "VU0_LQD(ctx, " << getValueName(inst.operands[0]) << ", " << (int)inst.vuDestMask << ")";
+            break;
+
         case IROp::IR_SYSCALL:
             out << "runtime->handleSyscall(rdram, ctx)";
             break;
@@ -563,17 +684,24 @@ std::string CppEmitter::getRegName(const IRReg& reg) const {
     switch (reg.kind) {
         case IRRegKind::GPR: return "r[" + std::to_string(reg.index) + "]";
         case IRRegKind::FPR: return "f[" + std::to_string(reg.index) + "]";
+        case IRRegKind::VF:  return "vf[" + std::to_string(reg.index) + "]";
+        case IRRegKind::VI:  return "vi[" + std::to_string(reg.index) + "]";
         case IRRegKind::HI:  return reg.index == 0 ? "hi" : "hi1";
         case IRRegKind::LO:  return reg.index == 0 ? "lo" : "lo1";
         case IRRegKind::SA:  return "sa";
         case IRRegKind::FPU_CC: return "fcr31";
-        case IRRegKind::FPU_ACC: return "fpu_acc"; // R5900Context needs to handle this? Or maybe we can just say fpu_acc, let's fall back to f[0] if it's missing but ideally we don't hit this yet
-        case IRRegKind::COP0: { // Standard cop0 mapped fields
+        case IRRegKind::FPU_ACC: return "fpu_acc";
+        case IRRegKind::VU_ACC:  return "vu_acc";
+        case IRRegKind::VU_Q:    return "vu_q";
+        case IRRegKind::VU_P:    return "vu_p";
+        case IRRegKind::VU_I:    return "vu_i";
+        case IRRegKind::VU_R:    return "vu_r";
+        case IRRegKind::COP0: {
             switch (reg.index) {
                 case 12: return "cop0_status";
                 case 13: return "cop0_cause";
                 case 14: return "cop0_epc";
-                default: return "cop0_index"; // Dummy fallback
+                default: return "cop0_index";
             }
         }
         case IRRegKind::PC: return "pc";
@@ -593,6 +721,7 @@ std::string CppEmitter::getCType(IRType type) const {
         case IRType::I32: return "uint32_t";
         case IRType::I64: return "uint64_t";
         case IRType::I128: return "__m128i";
+        case IRType::V128: return "__m128";
         case IRType::F32: return "float";
         default: return "uint32_t";
     }

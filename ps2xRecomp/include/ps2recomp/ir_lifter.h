@@ -382,6 +382,21 @@ private:
     void liftPMTHI (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
     void liftPMTLO (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
+    // VU0 (COP2) — Macro Mode
+    void liftVU0_Transfer(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftVU0_Generic (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+    void liftVU0_Special (ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
+
+    // VF/VI register helpers
+    ir::ValueId emitVFRead(ir::IRFunction& func, uint32_t blockIdx,
+                           uint8_t regIdx, uint32_t srcAddr);
+    void emitVFWrite(ir::IRFunction& func, uint32_t blockIdx,
+                     uint8_t regIdx, ir::ValueId value, uint32_t srcAddr);
+    ir::ValueId emitVIRead(ir::IRFunction& func, uint32_t blockIdx,
+                           uint8_t regIdx, uint32_t srcAddr);
+    void emitVIWrite(ir::IRFunction& func, uint32_t blockIdx,
+                     uint8_t regIdx, ir::ValueId value, uint32_t srcAddr);
+
     // Fallback for unhandled instructions
     void liftUnhandled(ir::IRFunction&, uint32_t, const GhidraInstruction&, const MIPSFields&);
 
