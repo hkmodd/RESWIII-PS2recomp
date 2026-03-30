@@ -194,6 +194,51 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["mfhi1"]   = &IRLifter::liftMFHI1;
     dispatchTable_["mflo1"]   = &IRLifter::liftMFLO1;
     dispatchTable_["madd"]    = &IRLifter::liftMADD;
+
+    // ── Phase 4: MMI 128-bit SIMD ───────────────────────────────────────
+    dispatchTable_["paddh"]   = &IRLifter::liftPADDH;
+    dispatchTable_["paddw"]   = &IRLifter::liftPADDW;
+    dispatchTable_["psubb"]   = &IRLifter::liftPSUBB;
+    dispatchTable_["psubw"]   = &IRLifter::liftPSUBW;
+    dispatchTable_["psubh"]   = &IRLifter::liftPSUBH;
+    dispatchTable_["pmaxh"]   = &IRLifter::liftPMAXH;
+    dispatchTable_["pminh"]   = &IRLifter::liftPMINH;
+    dispatchTable_["pand"]    = &IRLifter::liftPAND;
+    dispatchTable_["por"]     = &IRLifter::liftPOR;
+    dispatchTable_["pxor"]    = &IRLifter::liftPXOR;
+    dispatchTable_["pnor"]    = &IRLifter::liftPNOR;
+    dispatchTable_["pceqb"]   = &IRLifter::liftPCEQB;
+    dispatchTable_["pceqh"]   = &IRLifter::liftPCEQH;
+    dispatchTable_["pceqw"]   = &IRLifter::liftPCEQW;
+    dispatchTable_["pcgth"]   = &IRLifter::liftPCGTH;
+    dispatchTable_["pextlb"]  = &IRLifter::liftPEXTLB;
+    dispatchTable_["pextlw"]  = &IRLifter::liftPEXTLW;
+    dispatchTable_["pextub"]  = &IRLifter::liftPEXTUB;
+    dispatchTable_["pextuw"]  = &IRLifter::liftPEXTUW;
+    dispatchTable_["pcpyld"]  = &IRLifter::liftPCPYLD;
+    dispatchTable_["pcpyud"]  = &IRLifter::liftPCPYUD;
+    dispatchTable_["pinteh"]  = &IRLifter::liftPINTEH;
+    dispatchTable_["ppacb"]   = &IRLifter::liftPPACB;
+    dispatchTable_["ppacw"]   = &IRLifter::liftPPACW;
+    dispatchTable_["psllh"]   = &IRLifter::liftPSLLH;
+    dispatchTable_["psllw"]   = &IRLifter::liftPSLLW;
+    dispatchTable_["psrah"]   = &IRLifter::liftPSRAH;
+    dispatchTable_["psrlh"]   = &IRLifter::liftPSRLH;
+    dispatchTable_["psrlw"]   = &IRLifter::liftPSRLW;
+    dispatchTable_["pcpyh"]   = &IRLifter::liftPCPYH;
+    dispatchTable_["pexch"]   = &IRLifter::liftPEXCH;
+    dispatchTable_["pexcw"]   = &IRLifter::liftPEXCW;
+    dispatchTable_["pexeh"]   = &IRLifter::liftPEXEH;
+    dispatchTable_["pexew"]   = &IRLifter::liftPEXEW;
+    dispatchTable_["plzcw"]   = &IRLifter::liftPLZCW;
+    dispatchTable_["prevh"]   = &IRLifter::liftPREVH;
+    dispatchTable_["prot3w"]  = &IRLifter::liftPROT3W;
+    dispatchTable_["qfsrv"]   = &IRLifter::liftQFSRV;
+    dispatchTable_["pmfhl.lh"]= &IRLifter::liftPMFHL;
+    dispatchTable_["pmfhl.lw"]= &IRLifter::liftPMFHL;
+    dispatchTable_["pmfhl.uw"]= &IRLifter::liftPMFHL;
+    dispatchTable_["pmthi"]   = &IRLifter::liftPMTHI;
+    dispatchTable_["pmtlo"]   = &IRLifter::liftPMTLO;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

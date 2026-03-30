@@ -977,8 +977,10 @@ namespace ps2recomp
 
             std::cout << "Recompiling " << m_functions.size() << " functions..." << std::endl;
 
-            size_t processedCount = 0;
             size_t failedCount = 0;
+#if _DEBUG
+            size_t processedCount = 0;
+#endif
             for (auto &function : m_functions)
             {
                 std::cout << "processing function: " << function.name << std::endl;

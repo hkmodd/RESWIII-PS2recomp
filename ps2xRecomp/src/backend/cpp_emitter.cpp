@@ -470,32 +470,11 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_PADDB:
             out << "_mm_add_epi8(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
             break;
-        case IROp::IR_PEXTUW:
-            out << "MMI_PEXTUW(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
-            break;
-        case IROp::IR_PCPYLD:
-            out << "MMI_PCPYLD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
-            break;
         case IROp::IR_PEXTLH:
             out << "_mm_unpacklo_epi16(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")"; // rt, rs
             break;
         case IROp::IR_PEXTUH:
             out << "_mm_unpackhi_epi16(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")";
-            break;
-        case IROp::IR_PEXTLB:
-            out << "_mm_unpacklo_epi8(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")";
-            break;
-        case IROp::IR_PEXTUB:
-            out << "_mm_unpackhi_epi8(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")";
-            break;
-        case IROp::IR_PPACB:
-            out << "MMI_PPACB(ctx, " << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
-            break;
-        case IROp::IR_PPACW:
-            out << "MMI_PPACW(ctx, " << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
-            break;
-        case IROp::IR_PSLLW:
-            out << "_mm_sll_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
             break;
         case IROp::IR_PSRLW:
             out << "_mm_srl_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
@@ -503,6 +482,55 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_PSRAW:
             out << "_mm_sra_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))";
             break;
+
+        // ── Phase 4: MMI SIMD ───────────────────────────────────────────────
+        case IROp::IR_PADDH: out << "_mm_add_epi16(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PADDW: out << "_mm_add_epi32(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PSUBB: out << "_mm_sub_epi8(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PSUBH: out << "_mm_sub_epi16(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PSUBW: out << "_mm_sub_epi32(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        
+        case IROp::IR_PMAXH: out << "_mm_max_epi16(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PMINH: out << "_mm_min_epi16(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        
+        case IROp::IR_PAND:  out << "_mm_and_si128(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_POR:   out << "_mm_or_si128(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PXOR:  out << "_mm_xor_si128(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PNOR:  out << "_mm_andnot_si128(_mm_or_si128(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << "), _mm_set1_epi32(-1))"; break;
+        
+        case IROp::IR_PCEQB: out << "_mm_cmpeq_epi8(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PCEQH: out << "_mm_cmpeq_epi16(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PCEQW: out << "_mm_cmpeq_epi32(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PCGTH: out << "_mm_cmpgt_epi16(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        
+        case IROp::IR_PEXTLB: out << "_mm_unpacklo_epi8(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXTLW: out << "_mm_unpacklo_epi32(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXTUB: out << "_mm_unpackhi_epi8(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXTUW: out << "_mm_unpackhi_epi32(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")"; break;
+        
+        case IROp::IR_PCPYLD: out << "MMI_PCPYLD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PCPYUD: out << "MMI_PCPYUD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PCPYH:  out << "MMI_PCPYH(" << getValueName(inst.operands[0]) << ")"; break;
+        
+        case IROp::IR_PINTEH: out << "MMI_PINTEH(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PPACB:  out << "MMI_PPACB(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PPACW:  out << "MMI_PPACW(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        
+        case IROp::IR_PSLLH: out << "_mm_sll_epi16(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))"; break;
+        case IROp::IR_PSLLW: out << "_mm_sll_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))"; break;
+        case IROp::IR_PSRAH: out << "_mm_sra_epi16(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))"; break;
+        case IROp::IR_PSRLH: out << "_mm_srl_epi16(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))"; break;
+        
+        case IROp::IR_PEXCH: out << "MMI_PEXCH(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXCW: out << "MMI_PEXCW(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXEH: out << "MMI_PEXEH(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXEW: out << "MMI_PEXEW(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PLZCW: out << "MMI_PLZCW(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PREVH: out << "MMI_PREVH(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PROT3W:out << "MMI_PROT3W(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_QFSRV: out << "MMI_QFSRV(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[2]) << ")"; break;
+        
+        case IROp::IR_PMFHL: out << "MMI_PMFHL(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[2]) << ")"; break;
         case IROp::IR_SYSCALL:
             out << "runtime->handleSyscall(rdram, ctx)";
             break;

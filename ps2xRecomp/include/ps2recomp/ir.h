@@ -567,6 +567,7 @@ enum class IROp : uint16_t {
     IR_PEXCW,           // Parallel Exchange Center Word
     IR_PREVH,           // Parallel Reverse Halfword
     IR_PROT3W,          // Parallel Rotate 3 Words
+    IR_PLZCW,           // Parallel Leading Zero Count Word
 
     // --- Parallel HI/LO ---
     IR_PMFHI,           // Parallel Move From HI
@@ -880,6 +881,7 @@ inline const char* irOpName(IROp op) {
         case IROp::IR_PEXCW:        return "PEXCW";
         case IROp::IR_PREVH:        return "PREVH";
         case IROp::IR_PROT3W:       return "PROT3W";
+        case IROp::IR_PLZCW:        return "PLZCW";
         case IROp::IR_PMFHI:        return "PMFHI";
         case IROp::IR_PMFLO:        return "PMFLO";
         case IROp::IR_PMTHI:        return "PMTHI";
