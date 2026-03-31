@@ -1005,6 +1005,7 @@ void PS2Runtime::configureIoPathsFromElf(const std::string &elfPath)
 void PS2Runtime::registerFunction(uint32_t address, RecompiledFunction func)
 {
     m_functionTable[address] = func;
+    m_functionRangeMap[address] = func;
 }
 
 bool PS2Runtime::hasFunction(uint32_t address) const
@@ -1022,6 +1023,21 @@ bool PS2Runtime::hasFunction(uint32_t address) const
     }
 
     return false;
+}
+
+PS2Runtime::RecompiledFunction PS2Runtime::lookupFunctionByRange(uint32_t pc)
+{
+    if (m_functionRangeMap.empty()) return nullptr;
+
+    // upper_bound gives the first entry AFTER pc. Decrement to find the entry AT or BEFORE pc.
+    auto it = m_functionRangeMap.upper_bound(pc);
+    if (it == m_functionRangeMap.begin()) return nullptr; // pc is before any known function
+    --it;
+
+    // it->first is the start address of the containing function
+    // We found a function whose entry address <= pc
+    // The re-entry switch in the generated C++ will handle jumping to the correct basic block
+    return it->second;
 }
 
 PS2Runtime::RecompiledFunction PS2Runtime::lookupFunction(uint32_t address)
@@ -1043,7 +1059,15 @@ PS2Runtime::RecompiledFunction PS2Runtime::lookupFunction(uint32_t address)
         }
     }
 
-    std::cerr << "Warning: Function at address 0x" << std::hex << address << std::dec << " not found" << std::endl;
+    std::cerr << "Warning: Function at address 0x" << std::hex << address << std::dec << " not found (exact), trying range lookup..." << std::endl;
+
+    // Phase 1: Range-based lookup — find the function whose range contains this PC
+    auto rangeResult = lookupFunctionByRange(address);
+    if (rangeResult) {
+        return rangeResult;
+    }
+
+    std::cerr << "Warning: Function at address 0x" << std::hex << address << std::dec << " not found (range lookup also failed)" << std::endl;
 
     static RecompiledFunction defaultFunction = [](uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {

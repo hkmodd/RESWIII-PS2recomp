@@ -31,6 +31,7 @@ private:
     std::string getRegName(const ir::IRReg& reg) const;
     std::string getValueName(ir::ValueId id) const;
     std::string getCType(ir::IRType type) const;
+    ir::IRType getRegNativeType(const ir::IRReg& reg) const;
 
     std::unordered_map<ir::ValueId, ir::IRType> valueTypes_;
 };

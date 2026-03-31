@@ -19,9 +19,61 @@ std::string CppEmitter::emitFunction(const IRFunction& func) {
 
     out << "// Emitted C++ backend for " << func.name << "\n";
     out << "extern \"C\" void ps2_" << func.name << "(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {\n";
-    out << "    // TODO: Define context and basic arguments\n\n";
-    // Setup block dispatch for indirect intra-function jumps or just basic blocks if needed
-    // For now we just dump basic blocks linearly.
+
+    // ── Phase 3: Re-entry switch ──────────────────────────────────────────
+    // For every IR_CALL in this function, compute continuation_addr = call.srcAddress + 8
+    // and find the basic block whose mipsStartAddr matches. Emit a switch(ctx->pc)
+    // so the dispatcher can re-enter at the correct continuation point.
+    struct ReentryCase {
+        uint32_t continuationAddr; // JAL address + 8
+        uint32_t bbIndex;          // target basic block index
+    };
+    std::vector<ReentryCase> reentryCases;
+
+    // Build address→block index map
+    std::unordered_map<uint32_t, uint32_t> addrToBBIndex;
+    for (const auto& bb : func.blocks) {
+        if (bb.mipsStartAddr != 0) {
+            addrToBBIndex[bb.mipsStartAddr] = bb.index;
+        }
+    }
+
+    // Scan all blocks for IR_CALL instructions
+    for (const auto& bb : func.blocks) {
+        for (const auto& inst : bb.instructions) {
+            if (inst.op == IROp::IR_CALL && inst.srcAddress != 0) {
+                uint32_t continuationAddr = inst.srcAddress + 8;
+                auto it = addrToBBIndex.find(continuationAddr);
+                if (it != addrToBBIndex.end()) {
+                    // Deduplicate: don't emit the same case twice
+                    bool duplicate = false;
+                    for (const auto& rc : reentryCases) {
+                        if (rc.continuationAddr == continuationAddr) { duplicate = true; break; }
+                    }
+                    if (!duplicate) {
+                        reentryCases.push_back({continuationAddr, it->second});
+                    }
+                } else {
+                    // Warning: no matching basic block for this continuation address
+                    std::cerr << "[REENTRY-WARN] " << func.name
+                              << ": no BB for continuation 0x" << std::hex << continuationAddr
+                              << " (JAL at 0x" << inst.srcAddress << ")" << std::dec << std::endl;
+                }
+            }
+        }
+    }
+
+    // Emit the re-entry switch if there are any call continuations
+    if (!reentryCases.empty()) {
+        out << "    // Re-entry dispatch (continuation after calls)\n";
+        out << "    switch (ctx->pc) {\n";
+        for (const auto& rc : reentryCases) {
+            out << "        case 0x" << std::hex << rc.continuationAddr << std::dec
+                << ": goto bb_" << rc.bbIndex << ";\n";
+        }
+        out << "        default: break; // normal entry at bb_0\n";
+        out << "    }\n\n";
+    }
 
     for (const auto& bb : func.blocks) {
         emitBasicBlockHeader(out, bb);
@@ -65,7 +117,34 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
                     out << "GPR_U32(ctx, " << (int)inst.reg.index << ")";
                 }
             } else {
-                out << "ctx->" << getRegName(inst.reg);
+                // Non-GPR register read: bridge type domains
+                auto regNative = getRegNativeType(inst.reg);
+                auto resultType = inst.result.type;
+                if (regNative == resultType) {
+                    // Types match — direct read
+                    out << "ctx->" << getRegName(inst.reg);
+                } else if (resultType == IRType::I128 && (regNative == IRType::I64)) {
+                    // uint64_t → __m128i (zero-extended)
+                    out << "_mm_cvtsi64_si128((int64_t)(ctx->" << getRegName(inst.reg) << "))";
+                } else if (resultType == IRType::I64 && (regNative == IRType::I128)) {
+                    // __m128i → uint64_t (extract low 64)
+                    out << "(uint64_t)_mm_cvtsi128_si64(ctx->" << getRegName(inst.reg) << ")";
+                } else if (resultType == IRType::I128 && regNative == IRType::V128) {
+                    // __m128 → __m128i
+                    out << "_mm_castps_si128(ctx->" << getRegName(inst.reg) << ")";
+                } else if (resultType == IRType::V128 && regNative == IRType::I128) {
+                    // __m128i → __m128
+                    out << "_mm_castsi128_ps(ctx->" << getRegName(inst.reg) << ")";
+                } else if (resultType == IRType::I128 && regNative == IRType::I32) {
+                    // uint32_t → __m128i (zero-extended)
+                    out << "_mm_cvtsi32_si128((int32_t)(ctx->" << getRegName(inst.reg) << "))";
+                } else if (resultType == IRType::I32 && (regNative == IRType::I64)) {
+                    // uint64_t → uint32_t (truncate)
+                    out << "(uint32_t)(ctx->" << getRegName(inst.reg) << ")";
+                } else {
+                    // Fallback — direct (may warn but won't crash)
+                    out << "ctx->" << getRegName(inst.reg);
+                }
             }
             break;
         case IROp::IR_REG_WRITE:
@@ -83,7 +162,38 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
                     out << "SET_GPR_U32(ctx, " << (int)inst.reg.index << ", " << getValueName(inst.operands[0]) << ")";
                 }
             } else {
-                out << "ctx->" << getRegName(inst.reg) << " = " << getValueName(inst.operands[0]);
+                // Non-GPR register write: bridge type domains
+                auto regNative = getRegNativeType(inst.reg);
+                ir::IRType opType = ir::IRType::I32;
+                if (!inst.operands.empty()) {
+                    auto it = valueTypes_.find(inst.operands[0]);
+                    if (it != valueTypes_.end()) opType = it->second;
+                }
+                if (regNative == opType) {
+                    // Types match — direct write
+                    out << "ctx->" << getRegName(inst.reg) << " = " << getValueName(inst.operands[0]);
+                } else if (regNative == IRType::I64 && opType == IRType::I128) {
+                    // __m128i → uint64_t (extract low 64)
+                    out << "ctx->" << getRegName(inst.reg) << " = (uint64_t)_mm_cvtsi128_si64(" << getValueName(inst.operands[0]) << ")";
+                } else if (regNative == IRType::I128 && opType == IRType::I64) {
+                    // uint64_t → __m128i (zero-extend)
+                    out << "ctx->" << getRegName(inst.reg) << " = _mm_cvtsi64_si128((int64_t)" << getValueName(inst.operands[0]) << ")";
+                } else if (regNative == IRType::V128 && opType == IRType::I128) {
+                    // __m128i → __m128
+                    out << "ctx->" << getRegName(inst.reg) << " = _mm_castsi128_ps(" << getValueName(inst.operands[0]) << ")";
+                } else if (regNative == IRType::I128 && opType == IRType::V128) {
+                    // __m128 → __m128i
+                    out << "ctx->" << getRegName(inst.reg) << " = _mm_castps_si128(" << getValueName(inst.operands[0]) << ")";
+                } else if (regNative == IRType::I32 && opType == IRType::I128) {
+                    // __m128i → uint32_t (extract low 32)
+                    out << "ctx->" << getRegName(inst.reg) << " = (uint32_t)_mm_cvtsi128_si32(" << getValueName(inst.operands[0]) << ")";
+                } else if (regNative == IRType::I32 && opType == IRType::I64) {
+                    // uint64_t → uint32_t (truncate)
+                    out << "ctx->" << getRegName(inst.reg) << " = (uint32_t)(" << getValueName(inst.operands[0]) << ")";
+                } else {
+                    // Fallback — direct assign
+                    out << "ctx->" << getRegName(inst.reg) << " = " << getValueName(inst.operands[0]);
+                }
             }
             break;
         case IROp::IR_ADD:
@@ -209,13 +319,17 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             break;
         case IROp::IR_CALL:
             if (!inst.operands.empty()) {
-                out << "ctx->pc = " << getValueName(inst.operands[0]) << "; // function CALL (stub)";
+                out << "ctx->pc = " << getValueName(inst.operands[0]) << "; return; // function CALL \u2192 dispatcher";
             } else {
-                out << "ctx->pc = 0x" << std::hex << inst.branchTarget << std::dec << "; // function CALL (stub)";
+                out << "ctx->pc = 0x" << std::hex << inst.branchTarget << std::dec << "; return; // function CALL \u2192 dispatcher";
             }
             break;
         case IROp::IR_RETURN:
-            out << "return";
+            if (!inst.operands.empty()) {
+                out << "ctx->pc = " << getValueName(inst.operands[0]) << "; return";
+            } else {
+                out << "ctx->pc = GPR_U32(ctx, 31); return // WARNING: IR_RETURN with no operand";
+            }
             break;
         case IROp::IR_IF_LIKELY:
             out << "if (" << getValueName(inst.operands[0]) << ") {";
@@ -226,6 +340,12 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_CONST:
             if (inst.result.type == IRType::F32) {
                 out << inst.constData.immFloat << "f";
+            } else if (inst.result.type == IRType::I128) {
+                if (inst.constData.immUnsigned == 0) {
+                    out << "_mm_setzero_si128()";
+                } else {
+                    out << "_mm_set_epi64x(0, 0x" << std::hex << inst.constData.immUnsigned << std::dec << "ULL)";
+                }
             } else {
                 out << "(" << getCType(inst.result.type) << ")0x" << std::hex << inst.constData.immUnsigned << std::dec << "ULL";
             }
@@ -508,29 +628,30 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_PEXTUB: out << "_mm_unpackhi_epi8(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")"; break;
         case IROp::IR_PEXTUW: out << "_mm_unpackhi_epi32(" << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[0]) << ")"; break;
         
-        case IROp::IR_PCPYLD: out << "MMI_PCPYLD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
-        case IROp::IR_PCPYUD: out << "MMI_PCPYUD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
-        case IROp::IR_PCPYH:  out << "MMI_PCPYH(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PCPYLD: out << "PS2_PCPYLD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PCPYUD: out << "PS2_PCPYUD(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PCPYH:  out << "PS2_PCPYH(" << getValueName(inst.operands[0]) << ")"; break;
         
-        case IROp::IR_PINTEH: out << "MMI_PINTEH(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
-        case IROp::IR_PPACB:  out << "MMI_PPACB(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
-        case IROp::IR_PPACW:  out << "MMI_PPACW(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PINTEH: out << "PS2_PINTEH(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PPACB:  out << "PS2_PPACB(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
+        case IROp::IR_PPACW:  out << "PS2_PPACW(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")"; break;
         
         case IROp::IR_PSLLH: out << "_mm_sll_epi16(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))"; break;
         case IROp::IR_PSLLW: out << "_mm_sll_epi32(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))"; break;
         case IROp::IR_PSRAH: out << "_mm_sra_epi16(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))"; break;
         case IROp::IR_PSRLH: out << "_mm_srl_epi16(" << getValueName(inst.operands[0]) << ", _mm_cvtsi32_si128(" << getValueName(inst.operands[1]) << "))"; break;
         
-        case IROp::IR_PEXCH: out << "MMI_PEXCH(" << getValueName(inst.operands[0]) << ")"; break;
-        case IROp::IR_PEXCW: out << "MMI_PEXCW(" << getValueName(inst.operands[0]) << ")"; break;
-        case IROp::IR_PEXEH: out << "MMI_PEXEH(" << getValueName(inst.operands[0]) << ")"; break;
-        case IROp::IR_PEXEW: out << "MMI_PEXEW(" << getValueName(inst.operands[0]) << ")"; break;
-        case IROp::IR_PLZCW: out << "MMI_PLZCW(" << getValueName(inst.operands[0]) << ")"; break;
-        case IROp::IR_PREVH: out << "MMI_PREVH(" << getValueName(inst.operands[0]) << ")"; break;
-        case IROp::IR_PROT3W:out << "MMI_PROT3W(" << getValueName(inst.operands[0]) << ")"; break;
-        case IROp::IR_QFSRV: out << "MMI_QFSRV(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[2]) << ")"; break;
+        case IROp::IR_PEXCH: out << "PS2_PEXCH(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXCW: out << "PS2_PEXCW(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXEH: out << "PS2_PEXEH(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PEXEW: out << "PS2_PEXEW(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PLZCW: out << "PS2_PLZCW(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PREVH: out << "PS2_PREVH(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_PROT3W:out << "PS2_PROT3W(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_QFSRV: out << "PS2_QFSRV(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[2]) << ")"; break;
         
-        case IROp::IR_PMFHL: out << "MMI_PMFHL(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[2]) << ")"; break;
+        case IROp::IR_PMFHL: out << "PS2_PMFHL(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ", " << getValueName(inst.operands[2]) << ")"; break;
+
 
         // ── Phase 5: VU0 Arithmetic ─────────────────────────────────────────
         case IROp::IR_VU_ADD:
@@ -633,8 +754,8 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "VU0_CLIP(" << getValueName(inst.operands[0]) << ", " << getValueName(inst.operands[1]) << ")";
             break;
         // VU0 Transfer
-        case IROp::IR_VU_QMFC2: out << getValueName(inst.operands[0]); break;
-        case IROp::IR_VU_QMTC2: out << getValueName(inst.operands[0]); break;
+        case IROp::IR_VU_QMFC2: out << "_mm_castps_si128(" << getValueName(inst.operands[0]) << ")"; break;
+        case IROp::IR_VU_QMTC2: out << "_mm_castsi128_ps(" << getValueName(inst.operands[0]) << ")"; break;
         case IROp::IR_VU_CFC2:  out << "(uint32_t)(" << getValueName(inst.operands[0]) << ")"; break;
         case IROp::IR_VU_CTC2:  out << "(uint16_t)(" << getValueName(inst.operands[0]) << ")"; break;
         case IROp::IR_VU_MTIR:  out << "VU0_MTIR(" << getValueName(inst.operands[0]) << ", " << (int)inst.vuFSF << ")"; break;
@@ -680,22 +801,44 @@ std::string CppEmitter::getOpString(IROp op) const {
     return std::string(irOpName(op));
 }
 
+IRType CppEmitter::getRegNativeType(const IRReg& reg) const {
+    switch (reg.kind) {
+        case IRRegKind::GPR:     return IRType::I128; // 128-bit GPR registers
+        case IRRegKind::FPR:     return IRType::F32;  // float f[32]
+        case IRRegKind::VF:      return IRType::V128; // __m128 vu0_vf[32]
+        case IRRegKind::VI:      return IRType::I16;  // uint16_t vi[16]
+        case IRRegKind::HI:      return IRType::I64;  // uint64_t hi, hi1
+        case IRRegKind::LO:      return IRType::I64;  // uint64_t lo, lo1
+        case IRRegKind::SA:      return IRType::I32;  // uint32_t sa
+        case IRRegKind::FPU_CC:  return IRType::I32;  // uint32_t fcr31
+        case IRRegKind::FPU_ACC: return IRType::F32;  // float fpu_acc
+        case IRRegKind::VU_ACC:  return IRType::V128; // __m128 vu0_acc
+        case IRRegKind::VU_Q:    return IRType::F32;  // float vu0_q
+        case IRRegKind::VU_P:    return IRType::F32;  // float vu0_p
+        case IRRegKind::VU_I:    return IRType::F32;  // float vu0_i
+        case IRRegKind::VU_R:    return IRType::F32;  // float vu0_r
+        case IRRegKind::COP0:    return IRType::I32;  // uint32_t cop0_*
+        case IRRegKind::PC:      return IRType::I32;  // uint32_t pc
+        default:                 return IRType::I32;
+    }
+}
+
 std::string CppEmitter::getRegName(const IRReg& reg) const {
     switch (reg.kind) {
         case IRRegKind::GPR: return "r[" + std::to_string(reg.index) + "]";
         case IRRegKind::FPR: return "f[" + std::to_string(reg.index) + "]";
-        case IRRegKind::VF:  return "vf[" + std::to_string(reg.index) + "]";
+        case IRRegKind::VF:  return "vu0_vf[" + std::to_string(reg.index) + "]";
         case IRRegKind::VI:  return "vi[" + std::to_string(reg.index) + "]";
         case IRRegKind::HI:  return reg.index == 0 ? "hi" : "hi1";
         case IRRegKind::LO:  return reg.index == 0 ? "lo" : "lo1";
         case IRRegKind::SA:  return "sa";
         case IRRegKind::FPU_CC: return "fcr31";
         case IRRegKind::FPU_ACC: return "fpu_acc";
-        case IRRegKind::VU_ACC:  return "vu_acc";
-        case IRRegKind::VU_Q:    return "vu_q";
-        case IRRegKind::VU_P:    return "vu_p";
-        case IRRegKind::VU_I:    return "vu_i";
-        case IRRegKind::VU_R:    return "vu_r";
+        case IRRegKind::VU_ACC:  return "vu0_acc";
+        case IRRegKind::VU_Q:    return "vu0_q";
+        case IRRegKind::VU_P:    return "vu0_p";
+        case IRRegKind::VU_I:    return "vu0_i";
+        case IRRegKind::VU_R:    return "vu0_r";
         case IRRegKind::COP0: {
             switch (reg.index) {
                 case 12: return "cop0_status";

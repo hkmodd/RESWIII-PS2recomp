@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 #include <unordered_map>
+#include <map>
 #include <string>
 #include <functional>
 #if defined(_MSC_VER)
@@ -57,7 +58,7 @@ struct alignas(16) R5900Context
 
     // VU0 registers (when used in macro mode)
     __m128 vu0_vf[32];        // VU0 vector float registers
-    uint16_t vi[16];          // VU0 vector integer registers
+    uint16_t vi[32];          // VU0 vector integer registers
     float vu0_q;              // VU0 Q register (quotient)
     float vu0_p;              // VU0 P register (EFU result)
     float vu0_i;              // VU0 I register (integer value)
@@ -410,6 +411,7 @@ public:
 
     void registerFunction(uint32_t address, RecompiledFunction func);
     RecompiledFunction lookupFunction(uint32_t address);
+    RecompiledFunction lookupFunctionByRange(uint32_t pc);
     bool hasFunction(uint32_t address) const;
 
     static const IoPaths &getIoPaths();
@@ -565,6 +567,7 @@ private:
     uint32_t m_asyncCallbackStackTop = PS2_RAM_SIZE;
 
     std::unordered_map<uint32_t, RecompiledFunction> m_functionTable;
+    std::map<uint32_t, RecompiledFunction> m_functionRangeMap; // sorted by address for range lookup
     std::atomic<bool> m_stopRequested{false};
 
     // TODO remove this later

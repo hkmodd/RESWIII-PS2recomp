@@ -464,23 +464,27 @@ inline __m128i ps2_ppacw(__m128i rs, __m128i rt)
 
 inline __m128i ps2_ppach(__m128i rs, __m128i rt)
 {
-    const __m128i mask = _mm_setr_epi8(
-        0, 1, 4, 5, 8, 9, 12, 13,  // from rt: halfwords 0,2,4,6
-        0, 1, 4, 5, 8, 9, 12, 13); // from rs: halfwords 0,2,4,6
-    __m128i lo = _mm_shuffle_epi8(rt, mask);
-    __m128i hi = _mm_shuffle_epi8(rs, mask);
-    return _mm_unpacklo_epi64(lo, hi);
+    uint16_t out[8];
+    uint16_t *s = (uint16_t*)&rs;
+    uint16_t *t = (uint16_t*)&rt;
+    for(int i=0; i<4; i++) {
+        out[i] = t[i*2];
+        out[i+4] = s[i*2];
+    }
+    return _mm_loadu_si128((__m128i*)out);
 }
 #define PS2_PPACH(a, b) ps2_ppach((__m128i)(a), (__m128i)(b))
 
 inline __m128i ps2_ppacb(__m128i rs, __m128i rt)
 {
-    const __m128i mask = _mm_setr_epi8(
-        0, 2, 4, 6, 8, 10, 12, 14,  // from rt: bytes 0,2,4,6,8,10,12,14
-        0, 2, 4, 6, 8, 10, 12, 14); // from rs
-    __m128i lo = _mm_shuffle_epi8(rt, mask);
-    __m128i hi = _mm_shuffle_epi8(rs, mask);
-    return _mm_unpacklo_epi64(lo, hi);
+    uint8_t out[16];
+    uint8_t *s = (uint8_t*)&rs;
+    uint8_t *t = (uint8_t*)&rt;
+    for(int i=0; i<8; i++) {
+        out[i] = t[i*2];
+        out[i+8] = s[i*2];
+    }
+    return _mm_loadu_si128((__m128i*)out);
 }
 #define PS2_PPACB(a, b) ps2_ppacb((__m128i)(a), (__m128i)(b))
 
@@ -631,7 +635,8 @@ inline __m128i ps2_qfsrv(__m128i rs, __m128i rt, uint32_t sa)
     if (bitShift > 0)
     {
         uint8_t extra = (byteShift + 16 < 32) ? combined[byteShift + 16] : 0;
-        __m128i hi_byte = _mm_insert_epi8(_mm_setzero_si128(), extra, 15);
+        __m128i hi_byte = _mm_setzero_si128();
+        ((uint8_t*)&hi_byte)[15] = extra;
         alignas(16) uint8_t src32[32];
         for (uint32_t i = 0; i < 32; i++)
             src32[i] = combined[i];
@@ -672,19 +677,150 @@ inline __m128i ps2_qfsrv(__m128i rs, __m128i rt, uint32_t sa)
 }
 #define PS2_QFSRV(rs, rt, sa) ps2_qfsrv((__m128i)(rs), (__m128i)(rt), (uint32_t)(sa))
 #define PS2_PCPYLD(rs, rt) _mm_unpacklo_epi64(rt, rs)
+#define PS2_PCPYUD(rs, rt) _mm_unpackhi_epi64(rt, rs)
+#define PS2_PCPYH(rs) _mm_shufflehi_epi16(_mm_shufflelo_epi16(rs, _MM_SHUFFLE(2, 2, 0, 0)), _MM_SHUFFLE(2, 2, 0, 0))
 #define PS2_PEXEH(rs) _mm_shufflelo_epi16(_mm_shufflehi_epi16(rs, _MM_SHUFFLE(2, 3, 0, 1)), _MM_SHUFFLE(2, 3, 0, 1))
-#define PS2_PEXEW(rs) _mm_shuffle_epi32(rs, _MM_SHUFFLE(2, 3, 0, 1))
+#define PS2_PEXCH(rs) PS2_PEXEH(rs)
+#define PS2_PEXCW(rs) _mm_shuffle_epi32((rs), _MM_SHUFFLE(1, 0, 3, 2))
+#define PS2_PEXEW(rs) _mm_shuffle_epi32((rs), _MM_SHUFFLE(2, 3, 0, 1))
+/* PREVH: reverse all 8 halfwords. SSE2-only: reverse within halves then swap the two 64-bit halves */
+#define PS2_PREVH(rs) \
+    _mm_shuffle_epi32( \
+        _mm_shufflehi_epi16(_mm_shufflelo_epi16((rs), _MM_SHUFFLE(0,1,2,3)), _MM_SHUFFLE(0,1,2,3)), \
+        _MM_SHUFFLE(1,0,3,2))
+
+static inline uint64_t ps2_plzcw(uint64_t v) {
+    uint32_t lo = (uint32_t)(v & 0xFFFFFFFFu);
+    uint32_t hi = (uint32_t)(v >> 32);
+    return ((uint64_t)ps2_plzcw32(hi) << 32) | (uint64_t)ps2_plzcw32(lo);
+}
+
+#define PS2_PLZCW(rs) _mm_set_epi64x(0, ps2_plzcw(_mm_cvtsi128_si64(rs)))
+
+static inline __m128i ps2_pmfhl(__m128i hi, __m128i lo, uint32_t sa) {
+    uint64_t hi64 = (uint64_t)_mm_cvtsi128_si64(hi);
+    uint64_t lo64 = (uint64_t)_mm_cvtsi128_si64(lo);
+    switch (sa) {
+        case 0: return PS2_PMFHL_LW(hi64, lo64);
+        case 1: return PS2_PMFHL_UW(hi64, lo64);
+        case 2: return PS2_PMFHL_SLW(hi64, lo64);
+        case 3: return PS2_PMFHL_LH(hi64, lo64);
+        default: return _mm_setzero_si128();
+    }
+}
+#define PS2_PMFHL(hi, lo, sa) ps2_pmfhl((hi), (lo), (sa))
+
 #define PS2_PROT3W(rs) _mm_shuffle_epi32(rs, _MM_SHUFFLE(0, 3, 2, 1))
 
 // Additional VU0 operations
 #define PS2_VSQRT(x) sqrtf(x)
 #define PS2_VRSQRT(x) (1.0f / sqrtf(x))
 
+
+
+// --- VU0 Arithmetic Engine (Dummy compile-time versions with overloaded float support) ---
+__forceinline __m128 ps2_vu0_add(__m128 a, __m128 b) { return _mm_add_ps(a, b); }
+__forceinline __m128 ps2_vu0_add(__m128 a, float b) { return _mm_add_ps(a, _mm_set1_ps(b)); }
+__forceinline __m128 ps2_vu0_sub(__m128 a, __m128 b) { return _mm_sub_ps(a, b); }
+__forceinline __m128 ps2_vu0_sub(__m128 a, float b) { return _mm_sub_ps(a, _mm_set1_ps(b)); }
+__forceinline __m128 ps2_vu0_mul(__m128 a, __m128 b) { return _mm_mul_ps(a, b); }
+__forceinline __m128 ps2_vu0_mul(__m128 a, float b) { return _mm_mul_ps(a, _mm_set1_ps(b)); }
+__forceinline __m128 ps2_vu0_madd(__m128 acc, __m128 a, __m128 b) { return _mm_add_ps(acc, _mm_mul_ps(a, b)); }
+__forceinline __m128 ps2_vu0_madd(__m128 acc, __m128 a, float b) { return _mm_add_ps(acc, _mm_mul_ps(a, _mm_set1_ps(b))); }
+__forceinline __m128 ps2_vu0_msub(__m128 acc, __m128 a, __m128 b) { return _mm_sub_ps(acc, _mm_mul_ps(a, b)); }
+__forceinline __m128 ps2_vu0_msub(__m128 acc, __m128 a, float b) { return _mm_sub_ps(acc, _mm_mul_ps(a, _mm_set1_ps(b))); }
+__forceinline __m128 ps2_vu0_max(__m128 a, __m128 b) { return _mm_max_ps(a, b); }
+__forceinline __m128 ps2_vu0_max(__m128 a, float b) { return _mm_max_ps(a, _mm_set1_ps(b)); }
+__forceinline __m128 ps2_vu0_mini(__m128 a, __m128 b) { return _mm_min_ps(a, b); }
+__forceinline __m128 ps2_vu0_mini(__m128 a, float b) { return _mm_min_ps(a, _mm_set1_ps(b)); }
+__forceinline __m128 ps2_vu0_opmula(__m128 a, __m128 b) { return _mm_mul_ps(a, b); }
+__forceinline __m128 ps2_vu0_opmula(__m128 a, float b) { return _mm_mul_ps(a, _mm_set1_ps(b)); }
+__forceinline __m128 ps2_vu0_opmsub(__m128 a, __m128 b, __m128 c) { return _mm_sub_ps(a, _mm_mul_ps(b, c)); }
+__forceinline __m128 ps2_vu0_opmsub(__m128 a, __m128 b, float c) { return _mm_sub_ps(a, _mm_mul_ps(b, _mm_set1_ps(c))); }
+
+#define VU0_ADD(a, b, mask, bc) ps2_vu0_add((a), (b))
+#define VU0_SUB(a, b, mask, bc) ps2_vu0_sub((a), (b))
+#define VU0_MUL(a, b, mask, bc) ps2_vu0_mul((a), (b))
+#define VU0_MADD(acc, a, b, mask, bc) ps2_vu0_madd((acc), (a), (b))
+#define VU0_MSUB(acc, a, b, mask, bc) ps2_vu0_msub((acc), (a), (b))
+#define VU0_MAX(a, b, mask, bc) ps2_vu0_max((a), (b))
+#define VU0_MINI(a, b, mask, bc) ps2_vu0_mini((a), (b))
+#define VU0_ABS(a, mask) _mm_and_ps((a), _mm_castsi128_ps(_mm_set1_epi32(0x7FFFFFFF)))
+#define VU0_OPMULA(a, b) ps2_vu0_opmula((a), (b))
+#define VU0_OPMSUB(a, b, c) ps2_vu0_opmsub((a), (b), (c))
+#define VU0_ADDA(a, b, mask, bc) ps2_vu0_add((a), (b))
+#define VU0_SUBA(a, b, mask, bc) ps2_vu0_sub((a), (b))
+#define VU0_MULA(a, b, mask, bc) ps2_vu0_mul((a), (b))
+#define VU0_MADDA(acc, a, b, mask, bc) ps2_vu0_madd((acc), (a), (b))
+#define VU0_MSUBA(acc, a, b, mask, bc) ps2_vu0_msub((acc), (a), (b))
+
+// --- VU0 Conversion ---
+#define VU0_ITOF0(a, mask) _mm_cvtepi32_ps(_mm_castps_si128(a))
+#define VU0_ITOF4(a, mask) _mm_cvtepi32_ps(_mm_castps_si128(a))
+#define VU0_ITOF12(a, mask) _mm_cvtepi32_ps(_mm_castps_si128(a))
+#define VU0_ITOF15(a, mask) _mm_cvtepi32_ps(_mm_castps_si128(a))
+#define VU0_FTOI0(a, mask) _mm_castsi128_ps(_mm_cvtps_epi32(a))
+#define VU0_FTOI4(a, mask) _mm_castsi128_ps(_mm_cvtps_epi32(a))
+#define VU0_FTOI12(a, mask) _mm_castsi128_ps(_mm_cvtps_epi32(a))
+#define VU0_FTOI15(a, mask) _mm_castsi128_ps(_mm_cvtps_epi32(a))
+
+// --- VU0 Data Movement ---
+#define VU0_MOVE(a, mask) (a)
+#define VU0_MR32(a, mask) _mm_shuffle_ps((a), (a), _MM_SHUFFLE(2, 1, 0, 3))   /* rotate xyzw -> yzwx */
+/* MTIR: extract lane fsf from __m128 VF register as uint16_t for VI destination.
+   fsf: 0=x, 1=y, 2=z, 3=w */
+static inline uint16_t ps2_vu0_mtir(__m128 vf, int fsf) {
+    union { float f; uint32_t u; } pun;
+    switch (fsf) {
+        case 0: pun.f = _mm_cvtss_f32(vf); break;
+        case 1: pun.f = _mm_cvtss_f32(_mm_shuffle_ps(vf, vf, _MM_SHUFFLE(1,1,1,1))); break;
+        case 2: pun.f = _mm_cvtss_f32(_mm_shuffle_ps(vf, vf, _MM_SHUFFLE(2,2,2,2))); break;
+        case 3: pun.f = _mm_cvtss_f32(_mm_shuffle_ps(vf, vf, _MM_SHUFFLE(3,3,3,3))); break;
+        default: pun.u = 0; break;
+    }
+    return (uint16_t)(pun.u & 0xFFFF);
+}
+#define VU0_MTIR(vf, fsf) ps2_vu0_mtir((vf), (fsf))
+#define VU0_LQI(ctx, is_val, mask) \
+    ([&]() -> __m128 { \
+        uint32_t addr = 0x11004000 + (((uint32_t)(is_val) & 0x3FF) << 4); \
+        return _mm_castsi128_ps(READ128(addr)); \
+    }())
+#define VU0_LQD(ctx, is_val, mask) \
+    ([&]() -> __m128 { \
+        uint32_t dec_val = (is_val) - 1; \
+        uint32_t addr = 0x11004000 + (((uint32_t)(dec_val) & 0x3FF) << 4); \
+        return _mm_castsi128_ps(READ128(addr)); \
+    }())
+
+// --- VU0 Division / Sqrt ---
+#define VU0_DIV(a, b, fsf, ftf) 0.0f
+#define VU0_SQRT(a, ftf) 0.0f
+#define VU0_RSQRT(a, b, fsf, ftf) 0.0f
+
+// --- VU0 Clip ---
+#define VU0_CLIP(a, b) 0
+inline void ps2_vu0_store_vf(uint8_t* rdram, uint32_t addr, __m128 val) {
+    if ((addr & PS2_RAM_MASK) + 15 < PS2_RAM_SIZE) {
+        _mm_storeu_ps(reinterpret_cast<float*>(&rdram[addr & PS2_RAM_MASK]), val);
+    }
+}
+#define VU0_STORE_VF(rdram, addr, val) ps2_vu0_store_vf((rdram), (addr), (val))
+
+inline __m128 ps2_vu0_load_vf(uint8_t* rdram, uint32_t addr) {
+    if ((addr & PS2_RAM_MASK) + 15 < PS2_RAM_SIZE) {
+        return _mm_loadu_ps(reinterpret_cast<const float*>(&rdram[addr & PS2_RAM_MASK]));
+    }
+    return _mm_setzero_ps();
+}
+#define VU0_LOAD_VF(rdram, addr) ps2_vu0_load_vf((rdram), (addr))
+
 #define GPR_U32(ctx_ptr, reg_idx) ((reg_idx == 0) ? 0U : static_cast<uint32_t>(PS2_EXTRACT_EPI32_0(ctx_ptr->r[reg_idx])))
 #define GPR_S32(ctx_ptr, reg_idx) ((reg_idx == 0) ? 0 : PS2_EXTRACT_EPI32_0(ctx_ptr->r[reg_idx]))
 #define GPR_U64(ctx_ptr, reg_idx) ((reg_idx == 0) ? 0ULL : static_cast<uint64_t>(PS2_EXTRACT_EPI64_0(ctx_ptr->r[reg_idx])))
 #define GPR_S64(ctx_ptr, reg_idx) ((reg_idx == 0) ? 0LL : PS2_EXTRACT_EPI64_0(ctx_ptr->r[reg_idx]))
 #define GPR_VEC(ctx_ptr, reg_idx) ((reg_idx == 0) ? _mm_setzero_si128() : ctx_ptr->r[reg_idx])
+#define GET_GPR_VEC(ctx_ptr, reg_idx) GPR_VEC(ctx_ptr, reg_idx)
 
 static inline void Ps2SetGprLow64(R5900Context *ctx, int reg, __m128i new_low)
 {
