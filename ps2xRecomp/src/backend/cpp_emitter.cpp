@@ -6,6 +6,7 @@
 #include "cpp_emitter.h"
 #include <bit>
 #include <cmath>
+#include <iostream>
 
 namespace ps2recomp {
 
@@ -38,27 +39,19 @@ std::string CppEmitter::emitFunction(const IRFunction& func) {
         }
     }
 
-    // Scan all blocks for IR_CALL instructions
+    // Scan all blocks to build reentry switch. Add all basic blocks with a known
+    // MIPS address as valid re-entry points. This allows resuming not just after 
+    // CALLs, but also indirect jumps/switches that were unresolved statically and 
+    // fell back to the dispatcher.
     for (const auto& bb : func.blocks) {
-        for (const auto& inst : bb.instructions) {
-            if (inst.op == IROp::IR_CALL && inst.srcAddress != 0) {
-                uint32_t continuationAddr = inst.srcAddress + 8;
-                auto it = addrToBBIndex.find(continuationAddr);
-                if (it != addrToBBIndex.end()) {
-                    // Deduplicate: don't emit the same case twice
-                    bool duplicate = false;
-                    for (const auto& rc : reentryCases) {
-                        if (rc.continuationAddr == continuationAddr) { duplicate = true; break; }
-                    }
-                    if (!duplicate) {
-                        reentryCases.push_back({continuationAddr, it->second});
-                    }
-                } else {
-                    // Warning: no matching basic block for this continuation address
-                    std::cerr << "[REENTRY-WARN] " << func.name
-                              << ": no BB for continuation 0x" << std::hex << continuationAddr
-                              << " (JAL at 0x" << inst.srcAddress << ")" << std::dec << std::endl;
-                }
+        if (bb.mipsStartAddr != 0) {
+            // Deduplicate: don't emit the same case twice
+            bool duplicate = false;
+            for (const auto& rc : reentryCases) {
+                if (rc.continuationAddr == bb.mipsStartAddr) { duplicate = true; break; }
+            }
+            if (!duplicate) {
+                reentryCases.push_back({bb.mipsStartAddr, bb.index});
             }
         }
     }
