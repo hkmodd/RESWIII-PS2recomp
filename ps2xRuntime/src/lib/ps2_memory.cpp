@@ -193,6 +193,11 @@ bool PS2Memory::initialize(size_t ramSize)
 
         // Initialize GS registers
         memset(&gs_regs, 0, sizeof(gs_regs));
+        // GS CSR: bit 0 = SIGNAL, bit 1 = FINISH — set both to "idle/done"
+        // so any polling loop that reads GS CSR will see completion immediately.
+        gs_regs.csr = 0x0002u; // FINISH set
+        // PMODE: enable circuit 1 by default (bit 0)
+        gs_regs.pmode = 0x0001u;
         gs_regs.dispfb1 = (0ULL << 0) | (10ULL << 9) | (0ULL << 15) | (0ULL << 32) | (0ULL << 43);
         gs_regs.display1 = (0ULL << 0) | (0ULL << 12) | (0ULL << 23) | (0ULL << 27) | (639ULL << 32) | (447ULL << 44);
 
@@ -1324,6 +1329,36 @@ uint32_t PS2Memory::readIORegister(uint32_t address)
             }
             return 0;
         }
+    }
+
+    // ── Hardware timer / GS status registers ──
+    // The recompiled game polls these in tight loops waiting for
+    // completion flags that never get set in a stub environment.
+    // Return "operation finished" values so the loops exit immediately.
+    switch (address)
+    {
+    // Timer 0-3 Mode registers: bit 8 = overflow flag (Tof),
+    //                            bit 9 = equal flag  (Teq).
+    // Game reads Timer 1 Mode at 0x10001810 and loops until bit 8 is set.
+    case 0x10000810u: // T0_MODE
+    case 0x10001010u: // T0_COUNT (alias area)
+    case 0x10000800u: // T0_COUNT
+    case 0x10001810u: // T1_MODE  ← the critical one causing the infinite loop
+    case 0x10001800u: // T1_COUNT
+    case 0x10002810u: // T2_MODE (if used)
+    case 0x10003810u: // T3_MODE (if used)
+        return 0x0300u; // Tof + Teq both set → any poll on these bits exits
+
+    // GS CSR (privileged, but some games access it via IO aliases)
+    // bit 1 = SIGNAL, bit 2 = FINISH — both "done".
+    case 0x10001000u: // GS_PMODE equivalent in IO space
+        return 0x0001u; // enable circuit 1
+
+    case 0x10001400u: // GS_SMODE2 equivalent in IO space
+        return 0x0000u; // interlace=0 (progressive) — safe default
+
+    default:
+        break;
     }
 
     auto it = m_ioRegisters.find(address);
