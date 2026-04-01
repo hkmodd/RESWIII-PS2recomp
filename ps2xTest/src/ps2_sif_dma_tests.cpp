@@ -206,7 +206,7 @@ void register_ps2_sif_dma_tests()
             t.Equals(getReg(0x4u), 0x00020000u, "SIF boot status register should expose ready bit by default");
             t.Equals(getReg(0x80000000u), 0u, "SIF main-address register should default to zero");
             t.Equals(getReg(0x80000001u), 0u, "SIF sub-address register should default to zero");
-            t.Equals(getReg(0x80000002u), 0u, "SIF mscom register should default to zero");
+            t.Equals(getReg(0x80000002u), 1u, "SIF mscom register should pre-seed to 1 (IOP bind shortcut)");
         });
 
         tc.Run("sceSifExitCmd restores default boot-ready SIF registers", [](TestCase &t)
@@ -232,7 +232,7 @@ void register_ps2_sif_dma_tests()
             };
 
             t.Equals(getReg(0x4u), 0x00020000u, "sceSifExitCmd should restore the boot-ready status bit");
-            t.Equals(getReg(0x80000002u), 0u, "sceSifExitCmd should clear transient mscom state");
+            t.Equals(getReg(0x80000002u), 1u, "sceSifExitCmd should restore pre-seeded mscom (IOP bind shortcut)");
         });
 
         tc.Run("sceSifSetDma rejects invalid descriptors without partial writes", [](TestCase &t)

@@ -1059,7 +1059,7 @@ PS2Runtime::RecompiledFunction PS2Runtime::lookupFunction(uint32_t address)
         }
     }
 
-    std::cerr << "Warning: Function at address 0x" << std::hex << address << std::dec << " not found (exact), trying range lookup..." << std::endl;
+    // std::cerr << "Warning: Function at address 0x" << std::hex << address << std::dec << " not found (exact), trying range lookup..." << std::endl;
 
     // Phase 1: Range-based lookup — find the function whose range contains this PC
     auto rangeResult = lookupFunctionByRange(address);

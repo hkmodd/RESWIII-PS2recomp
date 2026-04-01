@@ -503,7 +503,8 @@ std::unordered_set<uint32_t> IRLifter::findBlockBoundaries(
             instr.mnemonic == "beql" || instr.mnemonic == "bnel" ||
             instr.mnemonic == "bgezal" || instr.mnemonic == "bltzal" ||
             instr.mnemonic == "bc1t" || instr.mnemonic == "bc1f" ||
-            instr.mnemonic == "bc1tl"|| instr.mnemonic == "bc1fl") {
+            instr.mnemonic == "bc1tl"|| instr.mnemonic == "bc1fl" ||
+            instr.mnemonic == "b"    || instr.mnemonic == "bal") {
             isBranch = true;
             target = computeBranchTarget(instr.addr, f.simm16);
         }
@@ -659,12 +660,29 @@ std::optional<IRFunction> IRLifter::liftFunction(
         if (progress) progress(i, stats_.totalInstructions);
     }
 
-    // Wire up fall-through edges between consecutive blocks
-    for (uint32_t b = 0; b + 1 < func.blocks.size(); ++b) {
+    // Wire up fall-through edges to the logical next block
+    for (uint32_t b = 0; b < func.blocks.size(); ++b) {
         auto& blk = func.blocks[b];
         if (blk.instructions.empty() || !blk.instructions.back().isTerminator()) {
-            blk.successors.push_back(b + 1);
-            func.blocks[b + 1].predecessors.push_back(b);
+            if (blk.mipsEndAddr != 0) {
+                auto it = addrToBlockIndex_.find(blk.mipsEndAddr);
+                if (it != addrToBlockIndex_.end()) {
+                    uint32_t nextB = it->second;
+                    blk.successors.push_back(nextB);
+                    func.blocks[nextB].predecessors.push_back(b);
+                    
+                    // Explicitly generate an IR_JUMP if the target block is not
+                    // literally the next block in the physical vector ordering.
+                    if (nextB != b + 1) {
+                        IRInst jmp;
+                        jmp.op = IROp::IR_JUMP;
+                        jmp.srcAddress = blk.mipsEndAddr - 4; // approximate
+                        jmp.branchTarget = nextB;
+                        jmp.comment = "Out-of-order fallthrough fallback";
+                        blk.instructions.push_back(std::move(jmp));
+                    }
+                }
+            }
         }
     }
 

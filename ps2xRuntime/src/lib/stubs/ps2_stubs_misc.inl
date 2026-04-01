@@ -3299,12 +3299,14 @@ void sceSifSetDma(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
             break;
         }
 
-        // Skip transfers involving IOP memory (>= 0x80000000).
+        // Skip transfers involving IOP/kernel memory (KSEG0/KSEG1: 0x80000000-0xBFFFFFFF).
         // SIF RPC bind sends data EE→IOP which has no meaning in our
         // runtime (no IOP exists). Silently skip instead of failing.
-        const bool srcIsIop = (xfer.src >= 0x80000000u);
-        const bool dstIsIop = (xfer.dest >= 0x80000000u);
-        if (srcIsIop || dstIsIop)
+        // Addresses above 0xBFFFFFFF are genuinely invalid and should still fail.
+        auto isKsegAddr = [](uint32_t addr) -> bool {
+            return addr >= 0x80000000u && addr < 0xC0000000u;
+        };
+        if (isKsegAddr(xfer.src) || isKsegAddr(xfer.dest))
         {
             continue;
         }
@@ -3341,7 +3343,8 @@ void sceSifSetDma(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
                       << std::dec << std::endl;
             ++warnCount;
         }
-        // Force success to appease the game's internal WaitSema/BindRpc loops.
+        // Force an interrupt anyway to un-stall the game
+        ps2_syscalls::dispatchDmacHandlersForCause(rdram, runtime, 5u);
         setReturnS32(ctx, static_cast<int32_t>(allocateSifDmaTransferId()));
         return;
     }
@@ -3370,6 +3373,13 @@ void sceSifSetReg(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
             prev = it->second;
         }
         g_sifRegs[reg] = value;
+        // [HLE] SIF register 4: the engine's sceSifInit() polls for bit 18 (0x40000)
+        // which the IOP sets to confirm readiness. Since we don't emulate the IOP,
+        // auto-inject this bit to let the init loop exit.
+        if (reg == 0x4u)
+        {
+            g_sifRegs[reg] |= 0x40000u;
+        }
         shouldLog = shouldTraceSifReg(reg) && g_sifSetRegLogCount < 128u;
         if (shouldLog)
         {

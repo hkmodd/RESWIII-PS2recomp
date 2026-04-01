@@ -278,25 +278,31 @@ void WaitSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         return;
     }
 
-    // [STUB] Bypass SIF RPC bind WaitSema.
-    // sceSifBindRpc (0x114668) calls WaitSema at ra = 0x11473c to wait for IOP response.
-    // Since we don't emulate the IOP, this semaphore will never be signaled.
-    // Auto-completing it here allows the engine to proceed past RPC binding.
-    if (getRegU32(ctx, 31) == 0x11473c)
+    // [STUB] Bypass SIF RPC WaitSema calls.
+    // FUN_00114668 is the core SIF RPC dispatch function used by both
+    // sceSifBindRpc (ra≈0x11473c) and sceSifCallRpc (ra≈0x114740).
+    // Both invoke WaitSema to await IOP responses that never arrive in our runtime.
+    // We detect any WaitSema call with ra inside FUN_00114668's body and auto-complete.
     {
-        // Fake the IOP response by writing a dummy server pointer (1) 
-        // to clientData->server (offset 0x24). $17 (s1) holds the clientData pointer.
-        uint32_t clientDataPtr = getRegU32(ctx, 17);
-        if (clientDataPtr)
+        const uint32_t ra = getRegU32(ctx, 31);
+        constexpr uint32_t kSifRpcFuncStart = 0x114668u;
+        constexpr uint32_t kSifRpcFuncEnd   = 0x114A28u;  // covers FUN_00114668 + FUN_00114838
+        if (ra >= kSifRpcFuncStart && ra <= kSifRpcFuncEnd)
         {
-            uint32_t *serverPtrAddr = reinterpret_cast<uint32_t *>(getMemPtr(rdram, clientDataPtr + 0x24));
-            if (serverPtrAddr)
+            // For bind calls: fake the IOP response by writing a dummy server pointer
+            // to clientData->server (offset 0x24). $17 (s1) holds the clientData pointer.
+            uint32_t clientDataPtr = getRegU32(ctx, 17);
+            if (clientDataPtr)
             {
-                *serverPtrAddr = 1;
+                uint32_t *serverPtrAddr = reinterpret_cast<uint32_t *>(getMemPtr(rdram, clientDataPtr + 0x24));
+                if (serverPtrAddr)
+                {
+                    *serverPtrAddr = 1;
+                }
             }
+            setReturnS32(ctx, KE_OK);
+            return;
         }
-        setReturnS32(ctx, KE_OK);
-        return;
     }
 
     auto info = ensureCurrentThreadInfo(ctx);
