@@ -284,6 +284,17 @@ void WaitSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     // Auto-completing it here allows the engine to proceed past RPC binding.
     if (getRegU32(ctx, 31) == 0x11473c)
     {
+        // Fake the IOP response by writing a dummy server pointer (1) 
+        // to clientData->server (offset 0x24). $17 (s1) holds the clientData pointer.
+        uint32_t clientDataPtr = getRegU32(ctx, 17);
+        if (clientDataPtr)
+        {
+            uint32_t *serverPtrAddr = reinterpret_cast<uint32_t *>(getMemPtr(rdram, clientDataPtr + 0x24));
+            if (serverPtrAddr)
+            {
+                *serverPtrAddr = 1;
+            }
+        }
         setReturnS32(ctx, KE_OK);
         return;
     }
