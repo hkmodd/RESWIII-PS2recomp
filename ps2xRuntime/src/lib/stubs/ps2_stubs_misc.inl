@@ -3341,7 +3341,8 @@ void sceSifSetDma(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
                       << std::dec << std::endl;
             ++warnCount;
         }
-        setReturnS32(ctx, 0);
+        // Force success to appease the game's internal WaitSema/BindRpc loops.
+        setReturnS32(ctx, static_cast<int32_t>(allocateSifDmaTransferId()));
         return;
     }
 
