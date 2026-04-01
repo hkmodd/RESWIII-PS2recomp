@@ -278,6 +278,16 @@ void WaitSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         return;
     }
 
+    // [STUB] Bypass SIF RPC bind WaitSema.
+    // sceSifBindRpc (0x114668) calls WaitSema at ra = 0x11473c to wait for IOP response.
+    // Since we don't emulate the IOP, this semaphore will never be signaled.
+    // Auto-completing it here allows the engine to proceed past RPC binding.
+    if (getRegU32(ctx, 31) == 0x11473c)
+    {
+        setReturnS32(ctx, KE_OK);
+        return;
+    }
+
     auto info = ensureCurrentThreadInfo(ctx);
     throwIfTerminated(info);
     std::unique_lock<std::mutex> lock(sema->m);

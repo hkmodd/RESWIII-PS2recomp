@@ -3298,6 +3298,17 @@ void sceSifSetDma(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
             ok = false;
             break;
         }
+
+        // Skip transfers involving IOP memory (>= 0x80000000).
+        // SIF RPC bind sends data EE→IOP which has no meaning in our
+        // runtime (no IOP exists). Silently skip instead of failing.
+        const bool srcIsIop = (xfer.src >= 0x80000000u);
+        const bool dstIsIop = (xfer.dest >= 0x80000000u);
+        if (srcIsIop || dstIsIop)
+        {
+            continue;
+        }
+
         if (!canCopyGuestByteRange(rdram, xfer.dest, xfer.src, sizeBytes))
         {
             ok = false;
