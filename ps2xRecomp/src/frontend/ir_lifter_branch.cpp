@@ -4,6 +4,7 @@
 // ============================================================================
 #include "ps2recomp/ir_lifter.h"
 #include <algorithm>
+#include <iostream>
 namespace ps2recomp {
 using namespace ir;
 
@@ -14,6 +15,15 @@ void IRLifter::emitCondBranch(IRFunction& func, uint32_t blockIdx,
     auto cmp = makeBinaryOp(func, cmpOp, IRType::I1, lhs, rhs, srcAddr);
     ValueId cId = cmp.result.id;
     func.blocks[blockIdx].instructions.push_back(std::move(cmp));
+
+    // ── Safety check: warn if branch targets external function ─────────
+    // MIPS compilers never generate conditional branches to external
+    // functions, but if encountered, log it for diagnosis.
+    if (targetAddr < currentFuncStart_ || targetAddr >= currentFuncEnd_) {
+        std::cerr << "[LIFTER WARNING] Conditional branch at 0x" << std::hex << srcAddr
+                  << " targets external address 0x" << targetAddr << std::dec
+                  << " — may create empty block\n";
+    }
 
     uint32_t tgtIdx = getOrCreateBlock(func, targetAddr);
 
@@ -161,6 +171,24 @@ void IRLifter::liftJ(IRFunction& func, uint32_t blockIdx,
                       const GhidraInstruction& instr,
                       const MIPSFields& f) {
     uint32_t target = computeJumpTarget(instr.addr, f.target26);
+
+    // ── Tail-call detection ───────────────────────────────────────────────
+    // If the jump target is outside the current function's address range,
+    // this is a tail-call to an external function, NOT an internal branch.
+    // Emit IR_CALL (dispatcher return: ctx->pc = target; return;) instead
+    // of IR_BRANCH (goto bb_N) which would create an empty basic block
+    // and cause infinite re-entry loops in the dispatcher.
+    if (target < currentFuncStart_ || target >= currentFuncEnd_) {
+        IRInst tailcall;
+        tailcall.op = IROp::IR_CALL;
+        tailcall.srcAddress = instr.addr;
+        tailcall.branchTarget = target;
+        tailcall.comment = "J tail-call (external)";
+        emitTerminator(func, blockIdx, std::move(tailcall), false, false);
+        return;
+    }
+
+    // Internal branch — target is within this function
     uint32_t tgtIdx = getOrCreateBlock(func, target);
 
     IRInst br;

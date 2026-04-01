@@ -546,6 +546,8 @@ std::optional<IRFunction> IRLifter::liftFunction(
     resetStats();
     addrToBlockIndex_.clear();
     currentResolvedJumps_ = resolvedJumps;
+    currentFuncStart_ = funcInfo.startAddr;
+    currentFuncEnd_   = funcInfo.endAddr;
 
     IRFunction func;
     func.name = funcInfo.name;

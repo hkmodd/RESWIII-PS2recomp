@@ -423,6 +423,10 @@ private:
     bool           foldDelaySlots_ = true;
     IRLifterStats  stats_;
     const std::vector<ResolvedJumpTable>* currentResolvedJumps_ = nullptr;
+
+    // Current function address range (set in liftFunction, used by liftJ for tail-call detection)
+    uint32_t currentFuncStart_ = 0;
+    uint32_t currentFuncEnd_   = 0;
 };
 
 } // namespace ps2recomp
