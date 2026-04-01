@@ -58,6 +58,16 @@ int main(int argc, char* argv[])
 
     registerAllFunctions(runtime);
 
+    // .ctors static initializers (0x1452e0 table) — missed by recompiler
+    // due to 0x98C698C6 padding bytes before them making Ghidra classify them as data.
+    // Called via jalr v0 from __do_global_ctors_aux at 0x12fbc0.
+    // Both are simple BSS/global-zeroing init functions; safe to no-op.
+    static auto ctorsNoop = [](uint8_t*, R5900Context* ctx, PS2Runtime*) {
+        ctx->pc = getRegU32(ctx, 31); // return via ra
+    };
+    runtime.registerFunction(0x00145120, ctorsNoop);
+    runtime.registerFunction(0x00145280, ctorsNoop);
+
     if (!runtime.loadELF(elfPath))
     {
         std::cerr << "Failed to load ELF file: " << elfPath << std::endl;

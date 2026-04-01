@@ -482,6 +482,8 @@ public:
                 return true;
             if (physAddr >= PS2_VU0_CODE_BASE && physAddr < (PS2_VU1_DATA_BASE + PS2_VU1_DATA_SIZE))
                 return true;
+            if (physAddr >= 0x000F200 && physAddr <= 0x000F260)
+                return true;
             return false;
         };
 

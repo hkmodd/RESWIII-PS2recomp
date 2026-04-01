@@ -413,6 +413,10 @@ uint32_t PS2Memory::read32(uint32_t address)
     {
         return loadScalar<uint32_t>(m_scratchpad, physAddr, PS2_SCRATCHPAD_SIZE, "read32 scratchpad", address);
     }
+    if (physAddr >= 0x000F200 && physAddr <= 0x000F260)
+    {
+        return readIORegister(physAddr | 0x10000000);
+    }
     if (physAddr < PS2_RAM_SIZE)
     {
         return loadScalar<uint32_t>(m_rdram, physAddr, PS2_RAM_SIZE, "read32 rdram", address);
@@ -580,6 +584,10 @@ void PS2Memory::write32(uint32_t address, uint32_t value)
     if (scratch)
     {
         storeScalar<uint32_t>(m_scratchpad, physAddr, PS2_SCRATCHPAD_SIZE, value, "write32 scratchpad", address);
+    }
+    else if (physAddr >= 0x000F200 && physAddr <= 0x000F260)
+    {
+        writeIORegister(physAddr | 0x10000000, value);
     }
     else if (physAddr < PS2_RAM_SIZE)
     {

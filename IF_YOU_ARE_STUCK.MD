@@ -1,0 +1,4 @@
+Porca madonna ti sei dimenticato tutto?
+Stiamo lavorando a qualcosa di micidiale: abbiamo preso un progetto ancora in Work in progress (PS2Recomp by RanJ su gitHub) e ci abbiamo aggiunto un IR Lifter e Ghidra Bridge per farlo recompilare direttamente dal nostro ELF (SLES_531.55) aperto su Ghidra (tramite HTTP BRIDGE GhydraMCP che sfruttiamo) con overlay (corec.bin) mappata correttamente di già
+Questo ci fa ottenere 21.000+ funzioni che poi ricompiliamo nel Runner per testare e vedere dal log COSA bisogna fare per procedere, dunque se stub, se problema ricompilatore, se problema runner, se mancano implementazioni, capito? MAI toccare il codice ricompilato ovviamente, sistemiamo sempre i problemi ALLA RADICE, agendo come veri ingegneri
+Dunque l'obiettivo a lungo termine ti è chiaro? Stiamo sia contribuendo a PS2Recomp e SIA portando SLES_531.55 su x86-64 Windows
