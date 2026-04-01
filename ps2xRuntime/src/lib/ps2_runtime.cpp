@@ -1829,9 +1829,38 @@ void PS2Runtime::dispatchLoop(uint8_t *rdram, R5900Context *ctx)
         const uint32_t dispatchedPc = pc;
         const uint32_t dispatchedRa = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[31], 0));
 
+        // Diagnostic: trace the init-loop transition
+        {
+            static int s_initDiagCount = 0;
+            if (s_initDiagCount < 200 && (pc == 0x119ce8u || pc == 0x11a6d8u || pc == 0x11a6a8u || pc == 0x1001a0u))
+            {
+                ++s_initDiagCount;
+                std::cerr << "[INIT-DIAG] #" << s_initDiagCount
+                          << " dispatch pc=0x" << std::hex << pc
+                          << " ra=0x" << dispatchedRa
+                          << " sp=0x" << static_cast<uint32_t>(_mm_extract_epi32(ctx->r[29], 0))
+                          << std::dec << std::endl;
+            }
+        }
+
         {
             GuestExecutionScope guestExecution(this);
             fn(rdram, ctx, this);
+        }
+
+        // Diagnostic: trace what happened after the init function returned
+        {
+            static int s_postDiagCount = 0;
+            if (s_postDiagCount < 200 && (dispatchedPc == 0x119ce8u || dispatchedPc == 0x11a6d8u || dispatchedPc == 0x11a6a8u || dispatchedPc == 0x1001a0u))
+            {
+                ++s_postDiagCount;
+                std::cerr << "[INIT-POST] #" << s_postDiagCount
+                          << " dispatched=0x" << std::hex << dispatchedPc
+                          << " newPc=0x" << ctx->pc
+                          << " newRa=0x" << static_cast<uint32_t>(_mm_extract_epi32(ctx->r[31], 0))
+                          << " newSp=0x" << static_cast<uint32_t>(_mm_extract_epi32(ctx->r[29], 0))
+                          << std::dec << std::endl;
+            }
         }
 
         if (ctx->pc == 0u)
