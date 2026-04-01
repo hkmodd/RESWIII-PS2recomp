@@ -547,12 +547,24 @@ std::optional<IRFunction> IRLifter::liftFunction(
     addrToBlockIndex_.clear();
     currentResolvedJumps_ = resolvedJumps;
     currentFuncStart_ = funcInfo.startAddr;
-    currentFuncEnd_   = funcInfo.endAddr;
+    // Compute the TRUE function end from the actual disassembly, not Ghidra's
+    // potentially too-tight endAddr. Ghidra sometimes reports endAddr that
+    // doesn't cover all basic blocks, causing internal branches to be
+    // misclassified as "external" tail-calls.
+    {
+        uint32_t maxAddr = funcInfo.endAddr;
+        for (const auto& inst : disasm) {
+            if (inst.addr + 4 > maxAddr) {
+                maxAddr = inst.addr + 4;
+            }
+        }
+        currentFuncEnd_ = maxAddr;
+    }
 
     IRFunction func;
     func.name = funcInfo.name;
     func.mipsEntryAddr = funcInfo.startAddr;
-    func.mipsEndAddr = funcInfo.endAddr;
+    func.mipsEndAddr = currentFuncEnd_;
 
     stats_.totalInstructions = static_cast<uint32_t>(disasm.size());
     std::cout << "\nLifting Function: " << func.name << "\n";

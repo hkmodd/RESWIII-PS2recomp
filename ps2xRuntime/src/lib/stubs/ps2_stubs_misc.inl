@@ -2653,7 +2653,9 @@ namespace
         g_sifRegs[kSifRegBootStatus] = kSifBootReadyMask;
         g_sifRegs[kSifRegMainAddr] = 0u;
         g_sifRegs[kSifRegSubAddr] = 0u;
-        g_sifRegs[kSifRegMsCom] = 0u;
+        // Pre-seed MsCom as "already initialized" so the SIF init bind loop
+        // in FUN_00113f28 ( do{} while(FUN_00113810()==0) ) exits immediately.
+        g_sifRegs[kSifRegMsCom] = 1u;
     }
 
     bool shouldTraceSifReg(uint32_t reg)
