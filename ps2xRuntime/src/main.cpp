@@ -1,4 +1,5 @@
 #include "ps2_runtime.h"
+#include "ps2_syscalls.h"
 #include "register_functions.h"
 #include "games_database.h"
 #ifdef _DEBUG
@@ -67,17 +68,6 @@ int main(int argc, char* argv[])
     };
     runtime.registerFunction(0x00145120, ctorsNoop);
     runtime.registerFunction(0x00145280, ctorsNoop);
-
-    // sceSifInit (0x113858) — SIF (SubSystem Interface Framework) initialization.
-    // Communicates with IOP via DMA channel 5 for RPC. In our HLE runtime the SIF
-    // subsystem is simulated via individual syscall stubs (sceSifGetReg/SetReg).
-    // The recompiled function has empty basic blocks (bb_26/bb_27) for the tail-call
-    // jumps to 0x113cd0 and 0x11a468, causing an infinite re-entry loop at 0x113a8c.
-    // Fix: stub the entire function as a successful no-op return.
-    static auto sifInitNoop = [](uint8_t*, R5900Context* ctx, PS2Runtime*) {
-        ctx->pc = getRegU32(ctx, 31); // return via ra
-    };
-    runtime.registerFunction(0x00113858, sifInitNoop);
 
     if (!runtime.loadELF(elfPath))
     {

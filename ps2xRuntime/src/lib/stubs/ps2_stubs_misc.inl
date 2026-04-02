@@ -3372,7 +3372,18 @@ void sceSifSetReg(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             prev = it->second;
         }
-        g_sifRegs[reg] = value;
+
+        uint32_t actualValue = value;
+        // [HLE] MSCOM initialization flag (0x80000002)
+        // sceSifInit() explicitly resets this to 0, which later forces sceSifInitRpc()
+        // to send a command to the IOP and spin-wait for an interrupt. By ignoring 
+        // the reset to 0, it remains 1, letting sceSifInitRpc() bypass the wait.
+        if (reg == 0x80000002u && value == 0u)
+        {
+            actualValue = prev; // Keep the old value (1)
+        }
+        
+        g_sifRegs[reg] = actualValue;
         // [HLE] SIF register 4: the engine's sceSifInit() polls for bit 18 (0x40000)
         // which the IOP sets to confirm readiness. Since we don't emulate the IOP,
         // auto-inject this bit to let the init loop exit.

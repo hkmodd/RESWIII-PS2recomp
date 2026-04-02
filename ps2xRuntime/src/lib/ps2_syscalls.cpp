@@ -299,6 +299,10 @@ namespace ps2_syscalls
         case 0x64:
             FlushCache(rdram, ctx, runtime);
             return true;
+        case 0x6B:
+        case static_cast<uint32_t>(-0x6B):
+            ps2_stubs::sceSifStopDma(rdram, ctx, runtime);
+            return true;
         case 0x70:
             GsGetIMR(rdram, ctx, runtime);
             return true;
