@@ -562,24 +562,29 @@ void SetupHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
             heapLimit = static_cast<uint32_t>(std::min<uint64_t>(candidateLimit, PS2_RAM_SIZE));
         }
         runtime->configureGuestHeap(heapBase, heapLimit);
+        std::cerr << "[SetupHeap] base: " << std::hex << heapBase << " size: " << heapSize << " limit: " << heapLimit << std::dec << std::endl;
         setReturnU32(ctx, runtime->guestHeapBase());
         return;
     }
 
+    std::cerr << "[SetupHeap] no runtime, base: " << std::hex << heapBase << std::dec << std::endl;
     setReturnU32(ctx, heapBase);
 }
 
 // 0x3E EndOfHeap: returns the upper-bound address for the kernel's sbrk.
-// The game's kernel sbrk checks: if (EndOfHeap() < current_break + size) → OOM.
+// The game's kernel sbrk checks: if (EndOfHeap() < current_break + size) -> OOM.
 // We return PS2_RAM_SIZE so the kernel can expand its break pointer freely
 // across the entire RDRAM allocation. The game's own allocator pool sits
 // inside BSS and manages sub-allocations independently.
 void EndOfHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 {
     (void)rdram;
-    (void)runtime;
-    // Return full RDRAM ceiling so kernel sbrk never hits OOM artificially.
-    setReturnU32(ctx, PS2_RAM_SIZE);
+    static int eoh_prints = 0;
+    if (eoh_prints < 10) {
+        std::cerr << "[EndOfHeap] returning: " << std::hex << (runtime ? runtime->guestHeapLimit() : PS2_RAM_SIZE) << std::dec << std::endl;
+        eoh_prints++;
+    }
+    setReturnU32(ctx, runtime ? runtime->guestHeapLimit() : PS2_RAM_SIZE);
 }
 
 void GetMemorySize(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)

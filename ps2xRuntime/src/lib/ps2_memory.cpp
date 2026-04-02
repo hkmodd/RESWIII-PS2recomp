@@ -822,13 +822,20 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
 
     if (address >= 0x10008000 && address < 0x1000F000)
     {
-        if ((address & 0xFF) == 0x00 && (value & 0x100))
+        std::cout << "[DMA ANY] Write to addr=0x" << std::hex << address << " val=0x" << value << std::dec << std::endl;
+        
+        if ((address & 0xFF) == 0x00)
         {
-            const auto dctrlIt = m_ioRegisters.find(0x1000E000u);
-            const bool dmacEnabled = (dctrlIt == m_ioRegisters.end()) || ((dctrlIt->second & 0x1u) != 0u);
-            if (!dmacEnabled)
-            {
-                return true;
+            if (value & 0x100) {
+                const auto dctrlIt = m_ioRegisters.find(0x1000E000u);
+                const bool dmacEnabled = (dctrlIt == m_ioRegisters.end()) || ((dctrlIt->second & 0x1u) != 0u);
+                if (!dmacEnabled)
+                {
+                    std::cout << "[DMA] Kick ignored because D_CTRL prevents it! addr=" << std::hex << address << std::dec << std::endl;
+                    return true;
+                }
+                
+                std::cout << "[DMA] KICK ACTUALLY STARTED addr=0x" << std::hex << address << " val=0x" << value << std::dec << std::endl;
             }
 
             const uint32_t channelBase = address & 0xFFFFFF00;
