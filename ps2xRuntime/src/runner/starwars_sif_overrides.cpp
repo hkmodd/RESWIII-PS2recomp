@@ -24,6 +24,58 @@ namespace
 
         // sceSifCallRpc (0x114838)
         static auto overrideSifCallRpc = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            uint32_t clientPtr = getRegU32(ctx, 4); // a0
+            uint32_t rpcNum    = getRegU32(ctx, 5); // a1
+            uint32_t mode      = getRegU32(ctx, 6); // a2 
+            uint32_t sendBuf   = getRegU32(ctx, 7); // a3
+            
+            // Check if this is the cdvdman client
+            // We can read sid from the client tracker in ps2_syscalls (but it's protected).
+            // Fast check: we know from tracing client == 0x1B4DC0 for CDVD
+            if (clientPtr == 0x1B4DC0) {
+                // Read recvBuf / recvSize from stack (O32 convention)
+                uint32_t sp = getRegU32(ctx, 29);
+                uint32_t recvBuf = runtimePtr->memory().read32(sp + 0x14);
+                uint32_t recvSize = runtimePtr->memory().read32(sp + 0x18);
+
+                static bool cored_opened = false;
+
+                if (rpcNum == 0x0) { // sceCdOpen (CORED.BIN)
+                    char filename[64] = {0};
+                    if (sendBuf) {
+                        for(int i=0; i<63; i++) {
+                            filename[i] = runtimePtr->memory().read8(sendBuf + 4 + i); // sendBuf might have header
+                            if (filename[i] == 0) break;
+                        }
+                    }
+                    if (strstr(filename, "CORED.BIN")) {
+                        cored_opened = true;
+                    }
+                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 1);
+                }
+                else if (rpcNum == 0x4) { // Read / GetStat
+                    // Se stiamo leggendo CORED, restituiamo 1 ma non sporchiamo RAM, 
+                    // oppure simuliamo successo continuo.
+                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 1);
+                }
+                else {
+                    // 0xFF (Init) or 0x01 (SearchFile)
+                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 1);
+                }
+
+                // Sblocca il thread dispatcher CDVD che fa WaitSema(3)
+                // Salviamo a0, chiamiamo iSignalSema, lo ripristiniamo (anche se non serve)
+                __m128i old_a0 = ctx->r[4];
+                ctx->r[4] = _mm_set_epi64x(0, 3LL); // 3 = CDVD Semaphore ID
+                ps2_syscalls::iSignalSema(rdram, ctx, runtimePtr);
+                ctx->r[4] = old_a0;
+
+                setReturnS32(ctx, 0); // Success
+                ctx->pc = getRegU32(ctx, 31); // return via ra
+                return;
+            }
+
+            // Fallback per tutte le altre RPC (IOP, audio, ecc.)
             ps2_syscalls::SifCallRpc(rdram, ctx, runtimePtr);
             ctx->pc = getRegU32(ctx, 31); // return via ra
         };
