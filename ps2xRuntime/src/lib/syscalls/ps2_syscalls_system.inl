@@ -579,12 +579,13 @@ void SetupHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 void EndOfHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 {
     (void)rdram;
+    (void)runtime;
     static int eoh_prints = 0;
     if (eoh_prints < 10) {
-        std::cerr << "[EndOfHeap] returning: " << std::hex << (runtime ? runtime->guestHeapLimit() : PS2_RAM_SIZE) << std::dec << std::endl;
+        std::cerr << "[EndOfHeap] returning: " << std::hex << PS2_RAM_SIZE << std::dec << std::endl;
         eoh_prints++;
     }
-    setReturnU32(ctx, runtime ? runtime->guestHeapLimit() : PS2_RAM_SIZE);
+    setReturnU32(ctx, PS2_RAM_SIZE);
 }
 
 void GetMemorySize(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
