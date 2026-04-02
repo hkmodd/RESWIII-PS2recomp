@@ -569,16 +569,17 @@ void SetupHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     setReturnU32(ctx, heapBase);
 }
 
-// 0x3E EndOfHeap: commonly returns current heap end; keep it stable for now.
+// 0x3E EndOfHeap: returns the upper-bound address for the kernel's sbrk.
+// The game's kernel sbrk checks: if (EndOfHeap() < current_break + size) → OOM.
+// We return PS2_RAM_SIZE so the kernel can expand its break pointer freely
+// across the entire RDRAM allocation. The game's own allocator pool sits
+// inside BSS and manages sub-allocations independently.
 void EndOfHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 {
-    if (runtime)
-    {
-        setReturnU32(ctx, runtime->guestHeapEnd());
-        return;
-    }
-
-    setReturnU32(ctx, getRegU32(ctx, 4));
+    (void)rdram;
+    (void)runtime;
+    // Return full RDRAM ceiling so kernel sbrk never hits OOM artificially.
+    setReturnU32(ctx, PS2_RAM_SIZE);
 }
 
 void GetMemorySize(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)

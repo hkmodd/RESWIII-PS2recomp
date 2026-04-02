@@ -773,10 +773,10 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "runtime->SignalException(ctx, EXCEPTION_BREAKPOINT); return";
             break;
         case IROp::IR_EI:
-            out << "ctx->cop0_status |= 0x10000 /* ei */";
+            out << "ctx->cop0_status |= 0x1 /* ei */";
             break;
         case IROp::IR_DI:
-            out << "ctx->cop0_status &= ~0x10000 /* di */";
+            out << "ctx->cop0_status &= ~0x1 /* di */";
             break;
         default:
             if (inst.result.type != IRType::Void) {
