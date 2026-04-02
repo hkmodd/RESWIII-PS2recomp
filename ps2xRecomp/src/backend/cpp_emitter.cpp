@@ -274,19 +274,26 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << getValueName(inst.operands[0]) << " != " << getValueName(inst.operands[1]);
             break;
         case IROp::IR_SLT:
-            out << "((int32_t)" << getValueName(inst.operands[0]) << " < (int32_t)" << getValueName(inst.operands[1]) << " ? 1 : 0)";
+        case IROp::IR_SLE:
+        case IROp::IR_SGT:
+        case IROp::IR_SGE: {
+            std::string opType = "int32_t";
+            if (!inst.operands.empty()) {
+                auto it = valueTypes_.find(inst.operands[0]);
+                if (it != valueTypes_.end()) {
+                    if (it->second == IRType::I64) opType = "int64_t";
+                    else if (it->second == IRType::I16) opType = "int16_t";
+                    else if (it->second == IRType::I8) opType = "int8_t";
+                }
+            }
+            if (inst.op == IROp::IR_SLT) out << "((" << opType << ")" << getValueName(inst.operands[0]) << " < (" << opType << ")" << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            else if (inst.op == IROp::IR_SLE) out << "((" << opType << ")" << getValueName(inst.operands[0]) << " <= (" << opType << ")" << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            else if (inst.op == IROp::IR_SGT) out << "((" << opType << ")" << getValueName(inst.operands[0]) << " > (" << opType << ")" << getValueName(inst.operands[1]) << " ? 1 : 0)";
+            else if (inst.op == IROp::IR_SGE) out << "((" << opType << ")" << getValueName(inst.operands[0]) << " >= (" << opType << ")" << getValueName(inst.operands[1]) << " ? 1 : 0)";
             break;
+        }
         case IROp::IR_SLTU:
             out << "(" << getValueName(inst.operands[0]) << " < " << getValueName(inst.operands[1]) << " ? 1 : 0)";
-            break;
-        case IROp::IR_SLE:
-            out << "((int32_t)" << getValueName(inst.operands[0]) << " <= (int32_t)" << getValueName(inst.operands[1]) << " ? 1 : 0)";
-            break;
-        case IROp::IR_SGT:
-            out << "((int32_t)" << getValueName(inst.operands[0]) << " > (int32_t)" << getValueName(inst.operands[1]) << " ? 1 : 0)";
-            break;
-        case IROp::IR_SGE:
-            out << "((int32_t)" << getValueName(inst.operands[0]) << " >= (int32_t)" << getValueName(inst.operands[1]) << " ? 1 : 0)";
             break;
         case IROp::IR_BRANCH:
             if (inst.operands.empty()) {
@@ -773,10 +780,10 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "runtime->SignalException(ctx, EXCEPTION_BREAKPOINT); return";
             break;
         case IROp::IR_EI:
-            out << "ctx->cop0_status |= 0x1 /* ei */";
+            out << "ctx->cop0_status |= 0x10001 /* ei */";
             break;
         case IROp::IR_DI:
-            out << "ctx->cop0_status &= ~0x1 /* di */";
+            out << "ctx->cop0_status &= ~0x10001u /* di */";
             break;
         default:
             if (inst.result.type != IRType::Void) {

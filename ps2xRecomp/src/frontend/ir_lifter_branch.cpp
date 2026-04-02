@@ -93,8 +93,8 @@ void IRLifter::liftB(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftBGEZ(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
-    auto zero = emitConst32(func, blockIdx, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64);
+    auto zero = emitConst64(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     // rs >= 0 ↔ !(rs < 0)
     emitCondBranch(func, blockIdx, IROp::IR_SGE, rs, zero, target, instr.addr);
@@ -103,8 +103,8 @@ void IRLifter::liftBGEZ(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftBGTZ(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
-    auto zero = emitConst32(func, blockIdx, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64);
+    auto zero = emitConst64(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     emitCondBranch(func, blockIdx, IROp::IR_SGT, rs, zero, target, instr.addr);
 }
@@ -112,8 +112,8 @@ void IRLifter::liftBGTZ(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftBLEZ(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
-    auto zero = emitConst32(func, blockIdx, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64);
+    auto zero = emitConst64(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     emitCondBranch(func, blockIdx, IROp::IR_SLE, rs, zero, target, instr.addr);
 }
@@ -121,8 +121,8 @@ void IRLifter::liftBLEZ(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftBLTZ(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
-    auto zero = emitConst32(func, blockIdx, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64);
+    auto zero = emitConst64(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     emitCondBranch(func, blockIdx, IROp::IR_SLT, rs, zero, target, instr.addr);
 }
@@ -130,8 +130,8 @@ void IRLifter::liftBLTZ(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftBGEZL(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
-    auto zero = emitConst32(func, blockIdx, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64);
+    auto zero = emitConst64(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     // isLikely = true
     emitCondBranch(func, blockIdx, IROp::IR_SGE, rs, zero, target, instr.addr, true);
@@ -140,8 +140,8 @@ void IRLifter::liftBGEZL(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftBGTZL(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
-    auto zero = emitConst32(func, blockIdx, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64);
+    auto zero = emitConst64(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     emitCondBranch(func, blockIdx, IROp::IR_SGT, rs, zero, target, instr.addr, true);
 }
@@ -149,8 +149,8 @@ void IRLifter::liftBGTZL(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftBLEZL(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
-    auto zero = emitConst32(func, blockIdx, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64);
+    auto zero = emitConst64(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     emitCondBranch(func, blockIdx, IROp::IR_SLE, rs, zero, target, instr.addr, true);
 }
@@ -158,8 +158,8 @@ void IRLifter::liftBLEZL(IRFunction& func, uint32_t blockIdx,
 void IRLifter::liftBLTZL(IRFunction& func, uint32_t blockIdx,
                          const GhidraInstruction& instr,
                          const MIPSFields& f) {
-    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr);
-    auto zero = emitConst32(func, blockIdx, 0);
+    auto rs   = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64);
+    auto zero = emitConst64(func, blockIdx, 0);
     uint32_t target = computeBranchTarget(instr.addr, f.simm16);
     emitCondBranch(func, blockIdx, IROp::IR_SLT, rs, zero, target, instr.addr, true);
 }
