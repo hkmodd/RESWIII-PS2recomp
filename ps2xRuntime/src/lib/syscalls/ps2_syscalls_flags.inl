@@ -375,11 +375,21 @@ void WaitSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 
     static std::atomic<uint32_t> s_waitSemaWakeLogs{0};
     const uint32_t wakeLog = s_waitSemaWakeLogs.fetch_add(1, std::memory_order_relaxed);
-    if (wakeLog < 256u)
+    if (wakeLog < 500u)
     {
         std::cout << "[WaitSema:wake] tid=" << g_currentThreadId
                   << " sid=" << sid
-                  << " ret=" << ret
+                  << " pc=0x" << std::hex << ctx->pc
+                  << " ra=0x" << getRegU32(ctx, 31);
+        uint32_t sp = getRegU32(ctx, 29);
+        std::cout << " stack:[";
+        for (int i = 0; i < 8; ++i) {
+            uint32_t val = 0;
+            uint32_t* ptr = (uint32_t*)getMemPtr(rdram, sp + i * 4);
+            if (ptr) val = *ptr;
+            std::cout << val << (i == 7 ? "" : " ");
+        }
+        std::cout << "] ret=" << std::dec << ret
                   << " count=" << sema->count
                   << std::endl;
     }
