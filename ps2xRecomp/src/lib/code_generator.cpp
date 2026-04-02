@@ -1069,6 +1069,10 @@ namespace ps2recomp
         case OPCODE_XORI:
             return fmt::format("SET_GPR_U64(ctx, {}, GPR_U64(ctx, {}) ^ (uint64_t)(uint16_t){});", inst.rt, inst.rs, inst.immediate);
         case OPCODE_LUI:
+            // HACK: Star Wars Episode III allocating down from 64MB freezes the PS2Recomp static emulator
+            if (inst.address == 0x12e840 && inst.rt == 16 && inst.immediate == 0x400) {
+                return fmt::format("SET_GPR_S32(ctx, {}, (int32_t)((uint32_t)0x100 << 16));", inst.rt);
+            }
             return fmt::format("SET_GPR_S32(ctx, {}, (int32_t)((uint32_t){} << 16));", inst.rt, inst.immediate);
         case OPCODE_LB:
             return fmt::format("SET_GPR_S32(ctx, {}, (int8_t){});", inst.rt, genRead(8, fmt::format("ADD32(GPR_U32(ctx, {}), {})", inst.rs, inst.simmediate)));

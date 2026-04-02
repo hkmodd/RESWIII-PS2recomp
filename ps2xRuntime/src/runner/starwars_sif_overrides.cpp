@@ -41,6 +41,7 @@ namespace
         // Prevent infinite loop waiting for SIF RPC init at 0x114088
         // The HLE completes the operation synchronously without updating the wait flag.
         runtime.memory().write32(0x114088, 0x00000000); // NOP out 'beq v0, zero, 0x114080'
+
     }
 }
 
