@@ -72,7 +72,8 @@ namespace
             // The alarm handler is called as handler(alarmId, ticksRemaining, commonArg)
             // commonArg (a2 = reg 6) is the sema ID.  iSignalSema reads from a0 (reg 4).
             uint32_t semaId = getRegU32(ctx, 6);
-            setRegU32(ctx, 4, semaId); // move a2 → a0 for iSignalSema
+            // Move a2 -> a0. R5900 sign-extends 32-bit into 64-bit GPR.
+            ctx->r[4] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(semaId))); 
             ps2_syscalls::iSignalSema(rdram, ctx, rt);
             ctx->pc = getRegU32(ctx, 31);
         };
