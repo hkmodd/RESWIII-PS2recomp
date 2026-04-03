@@ -1948,10 +1948,6 @@ void PS2Runtime::cooperativeGuestYield()
     {
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
-    else
-    {
-        std::this_thread::yield();
-    }
 }
 
 uint8_t PS2Runtime::Load8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)

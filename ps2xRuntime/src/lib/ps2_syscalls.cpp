@@ -1,18 +1,3 @@
-extern "C" {
-    unsigned __int128 __udivti3(unsigned __int128 n, unsigned __int128 d) {
-        if (d == 0) return 0;
-        unsigned __int128 q = 0, r = 0;
-        for (int i = 127; i >= 0; i--) {
-            r <<= 1;
-            r |= (n >> i) & 1;
-            if (r >= d) {
-                r -= d;
-                q |= ((unsigned __int128)1 << i);
-            }
-        }
-        return q;
-    }
-}
 #include "ps2_syscalls.h"
 #include "ps2_runtime.h"
 #include "ps2_iop_audio.h"
