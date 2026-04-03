@@ -884,7 +884,7 @@ void SetAlarm(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     info->sp = getRegU32(ctx, 29);
     info->rdram = rdram;
     info->runtime = runtime;
-    info->dueAt = std::chrono::steady_clock::now() + alarmTicksToDuration(ticks);
+    info->remainingMs.store(static_cast<int64_t>(alarmTicksToMs(ticks)), std::memory_order_relaxed);
 
     int alarmId = 0;
     {

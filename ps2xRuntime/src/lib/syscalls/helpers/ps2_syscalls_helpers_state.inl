@@ -176,7 +176,7 @@ struct AlarmInfo
     uint32_t sp = 0;
     uint8_t *rdram = nullptr;
     PS2Runtime *runtime = nullptr;
-    std::chrono::steady_clock::time_point dueAt;
+    std::atomic<int64_t> remainingMs{0}; // Milliseconds until due. Replaces steady_clock::time_point to avoid __udivti3.
 };
 
 struct io_stat_t

@@ -109,11 +109,15 @@ static void setRegU32(R5900Context *ctx, int reg, uint32_t value)
     SET_GPR_U32(ctx, reg, value);
 }
 
-static std::chrono::microseconds alarmTicksToDuration(uint16_t ticks)
+// Returns alarm duration in milliseconds as a plain integer.
+// Avoids returning std::chrono types that cause __udivti3 when combined with steady_clock.
+static uint64_t alarmTicksToMs(uint16_t ticks)
 {
     constexpr uint64_t kAlarmTickUsec = 64u; // Approximate EE H-SYNC tick period.
     const uint64_t clampedTicks = (ticks == 0u) ? 1u : static_cast<uint64_t>(ticks);
-    return std::chrono::microseconds(clampedTicks * kAlarmTickUsec);
+    uint64_t usec = clampedTicks * kAlarmTickUsec;
+    uint64_t ms = (usec + 999u) / 1000u; // round up to at least 1ms
+    return (ms == 0u) ? 1u : ms;
 }
 
 static void ensureAlarmWorkerRunning()
@@ -134,26 +138,38 @@ static void ensureAlarmWorkerRunning()
                             continue;
                         }
 
-                        auto nextIt = std::min_element(g_alarms.begin(), g_alarms.end(),
-                                                       [](const auto &a, const auto &b)
-                                                       {
-                                                           return a.second->dueAt < b.second->dueAt;
-                                                       });
-                        if (nextIt == g_alarms.end())
+                        // Find the alarm with the smallest remaining ms.
+                        int64_t bestRemainingMs = INT64_MAX;
+                        auto bestIt = g_alarms.end();
+                        for (auto it = g_alarms.begin(); it != g_alarms.end(); ++it)
+                        {
+                            int64_t rem = it->second->remainingMs.load(std::memory_order_relaxed);
+                            if (rem < bestRemainingMs)
+                            {
+                                bestRemainingMs = rem;
+                                bestIt = it;
+                            }
+                        }
+                        if (bestIt == g_alarms.end())
                         {
                             g_alarm_cv.wait(lock);
                             continue;
                         }
 
-                        const auto now = std::chrono::steady_clock::now();
-                        if (nextIt->second->dueAt > now)
+                        if (bestRemainingMs > 0)
                         {
-                            g_alarm_cv.wait_until(lock, nextIt->second->dueAt);
+                            // Sleep for 1ms then re-check — avoids steady_clock arithmetic.
+                            g_alarm_cv.wait_for(lock, std::chrono::milliseconds(1));
+                            // Decrement all alarms by 1ms.
+                            for (auto &pair : g_alarms)
+                            {
+                                pair.second->remainingMs.fetch_sub(1, std::memory_order_relaxed);
+                            }
                             continue;
                         }
 
-                        readyAlarm = nextIt->second;
-                        g_alarms.erase(nextIt);
+                        readyAlarm = bestIt->second;
+                        g_alarms.erase(bestIt);
                     }
                 }
 
@@ -546,9 +562,15 @@ static void encodePs2Time(std::time_t t, uint8_t out[8])
 
 static std::time_t fileTimeToTimeT(std::filesystem::file_time_type ft)
 {
-    auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-        ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-    return std::chrono::system_clock::to_time_t(sctp);
+    // Avoid chrono clock arithmetic that may generate __udivti3.
+    // Use the C++20 clock_cast if available, otherwise return current time.
+#if defined(__cpp_lib_chrono) && __cpp_lib_chrono >= 201907L
+    auto sys = std::chrono::clock_cast<std::chrono::system_clock>(ft);
+    return std::chrono::system_clock::to_time_t(sys);
+#else
+    // Fallback: just return the current time (alarm/file timestamps are non-critical for HLE).
+    return std::time(nullptr);
+#endif
 }
 
 static bool gmtimeSafe(const std::time_t *t, std::tm *out)

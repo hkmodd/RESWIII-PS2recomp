@@ -267,45 +267,27 @@ static void interruptWorkerMain(uint8_t *rdram, PS2Runtime *runtime)
 {
     g_currentThreadId = -1;
 
-    using clock = std::chrono::steady_clock;
-    auto nextTick = clock::now() + kVblankPeriod;
+    // Fixed 16ms vblank period — avoids ALL std::chrono time_point arithmetic
+    // which generates __udivti3 (128-bit division) on Clang/Windows.
+    // 16ms ≈ 60Hz NTSC vblank, good enough for HLE emulation.
+    constexpr int kVblankMs = 16;
 
     while (runtime != nullptr && !runtime->isStopRequested())
     {
-        const auto loopNow = clock::now();
-        if (loopNow < nextTick)
         {
-            // Cast to milliseconds (64-bit) to avoid Clang generating __udivti3 (128-bit division)
-            auto sleepMs = std::chrono::duration_cast<std::chrono::milliseconds>(nextTick - loopNow);
-            if (sleepMs.count() <= 0) sleepMs = std::chrono::milliseconds(1);
             std::unique_lock<std::mutex> lock(g_irq_worker_mutex);
-            if (g_irq_worker_cv.wait_for(lock, sleepMs, []()
+            if (g_irq_worker_cv.wait_for(lock, std::chrono::milliseconds(kVblankMs), []()
                                            { return g_irq_worker_stop.load(std::memory_order_acquire); }))
             {
                 break;
             }
         }
 
-        const auto now = clock::now();
-        int ticksToProcess = 0;
-        while (now >= nextTick && ticksToProcess < kMaxCatchupTicks)
-        {
-            ++ticksToProcess;
-            nextTick += kVblankPeriod;
-        }
-        if (ticksToProcess == 0)
-        {
-            continue;
-        }
-
-        for (int i = 0; i < ticksToProcess; ++i)
-        {
-            const uint64_t tickValue = signalVSyncFlag(rdram);
-            ps2_stubs::dispatchGsSyncVCallback(rdram, runtime, tickValue);
-            dispatchIntcHandlersForCause(rdram, runtime, kIntcVblankStart);
-            std::this_thread::sleep_for(std::chrono::microseconds(500));
-            dispatchIntcHandlersForCause(rdram, runtime, kIntcVblankEnd);
-        }
+        const uint64_t tickValue = signalVSyncFlag(rdram);
+        ps2_stubs::dispatchGsSyncVCallback(rdram, runtime, tickValue);
+        dispatchIntcHandlersForCause(rdram, runtime, kIntcVblankStart);
+        std::this_thread::sleep_for(std::chrono::microseconds(500));
+        dispatchIntcHandlersForCause(rdram, runtime, kIntcVblankEnd);
     }
 
     g_irq_worker_running.store(false, std::memory_order_release);
