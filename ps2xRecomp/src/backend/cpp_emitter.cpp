@@ -785,6 +785,9 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         case IROp::IR_DI:
             out << "ctx->cop0_status &= ~0x1u /* di: clear IE (bit 0) only */";
             break;
+        case IROp::IR_NOT:
+            out << "~(" << getValueName(inst.operands[0]) << ")";
+            break;
         default:
             if (inst.result.type != IRType::Void) {
                 out << "([&]() -> " << getCType(inst.result.type) << " { runtime->SignalException(ctx, PS2_EXCEPTION_UNKNOWN_INSTRUCTION); std::abort(); return " << getCType(inst.result.type) << "{}; })() /* UNHANDLED OPCODE: " << getOpString(inst.op) << " */";

@@ -46,6 +46,7 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["xor"]    = &IRLifter::liftXOR;
     dispatchTable_["xori"]   = &IRLifter::liftXORI;
     dispatchTable_["nor"]    = &IRLifter::liftNOR;
+    dispatchTable_["not"]    = &IRLifter::liftNOR;   // NOT rd,rs = NOR rd,rs,$zero (pseudo)
     // Shifts
     dispatchTable_["sll"]    = &IRLifter::liftSLL;
     dispatchTable_["srl"]    = &IRLifter::liftSRL;
