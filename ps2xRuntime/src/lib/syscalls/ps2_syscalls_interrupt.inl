@@ -275,9 +275,11 @@ static void interruptWorkerMain(uint8_t *rdram, PS2Runtime *runtime)
         const auto loopNow = clock::now();
         if (loopNow < nextTick)
         {
-            auto sleepDuration = nextTick - loopNow;
+            // Cast to milliseconds (64-bit) to avoid Clang generating __udivti3 (128-bit division)
+            auto sleepMs = std::chrono::duration_cast<std::chrono::milliseconds>(nextTick - loopNow);
+            if (sleepMs.count() <= 0) sleepMs = std::chrono::milliseconds(1);
             std::unique_lock<std::mutex> lock(g_irq_worker_mutex);
-            if (g_irq_worker_cv.wait_for(lock, sleepDuration, []()
+            if (g_irq_worker_cv.wait_for(lock, sleepMs, []()
                                            { return g_irq_worker_stop.load(std::memory_order_acquire); }))
             {
                 break;

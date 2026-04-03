@@ -32,7 +32,7 @@ namespace ps2_stubs
 static constexpr int FB_WIDTH = 640;
 static constexpr int FB_HEIGHT = 448;
 static constexpr uint32_t DEFAULT_FB_SIZE = FB_WIDTH * FB_HEIGHT * 4;
-static constexpr uint32_t DEFAULT_FB_ADDR = (PS2_RAM_SIZE - DEFAULT_FB_SIZE - 0x10000u);
+// static constexpr uint32_t DEFAULT_FB_ADDR = (PS2_RAM_SIZE - DEFAULT_FB_SIZE - 0x10000u);
 struct ElfHeader
 {
     uint32_t magic;
@@ -80,9 +80,9 @@ namespace
     constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
     constexpr uint32_t COP0_STATUS_EXL = 0x00000002u;
     constexpr uint32_t COP0_STATUS_BEV = 0x00400000u;
-    constexpr uint32_t EXCEPTION_VECTOR_GENERAL = 0x80000080u;
-    constexpr uint32_t EXCEPTION_VECTOR_TLB_REFILL = 0x80000000u;
-    constexpr uint32_t EXCEPTION_VECTOR_BOOT = 0xBFC00200u;
+    constexpr uint32_t PS2_EXCEPTION_VECTOR_GENERAL = 0x80000080u;
+    constexpr uint32_t PS2_EXCEPTION_VECTOR_TLB_REFILL = 0x80000000u;
+    constexpr uint32_t PS2_EXCEPTION_VECTOR_BOOT = 0xBFC00200u;
 
     struct DispatchHistory
     {
@@ -168,14 +168,14 @@ namespace
     {
         if (ctx->cop0_status & COP0_STATUS_BEV)
         {
-            return EXCEPTION_VECTOR_BOOT;
+            return PS2_EXCEPTION_VECTOR_BOOT;
         }
-        return tlbRefill ? EXCEPTION_VECTOR_TLB_REFILL : EXCEPTION_VECTOR_GENERAL;
+        return tlbRefill ? PS2_EXCEPTION_VECTOR_TLB_REFILL : PS2_EXCEPTION_VECTOR_GENERAL;
     }
 
     void raiseCop0Exception(R5900Context *ctx, uint32_t exceptionCode, bool tlbRefill = false)
     {
-        if (exceptionCode == EXCEPTION_UNKNOWN_INSTRUCTION) {
+        if (exceptionCode == PS2_EXCEPTION_UNKNOWN_INSTRUCTION) {
             std::cerr << "[FATAL] Unhandled Instruction. PC: 0x" << std::hex << ctx->pc << std::dec << std::endl;
             std::abort();
         }
@@ -297,6 +297,7 @@ namespace
         return 0u;
     }
 
+/*
     std::string readGuestPrintableString(const uint8_t *rdram, uint32_t addr, size_t maxLen)
     {
         std::string out;
@@ -324,6 +325,7 @@ namespace
         }
         return out;
     }
+*/
 }
 
 PS2Runtime::GuestExecutionScope::GuestExecutionScope(PS2Runtime *runtime) noexcept
@@ -1199,14 +1201,14 @@ PS2Runtime::RecompiledFunction PS2Runtime::lookupFunction(uint32_t address)
 
 void PS2Runtime::SignalException(R5900Context *ctx, PS2Exception exception)
 {
-    if (exception == EXCEPTION_INTEGER_OVERFLOW)
+    if (exception == PS2_EXCEPTION_INTEGER_OVERFLOW)
     {
         HandleIntegerOverflow(ctx);
         return;
     }
 
     raiseCop0Exception(ctx, static_cast<uint32_t>(exception),
-                       exception == EXCEPTION_TLB_REFILL);
+                       exception == PS2_EXCEPTION_TLB_REFILL);
 }
 
 void PS2Runtime::executeVU0Microprogram(uint8_t *rdram, R5900Context *ctx, uint32_t address)
@@ -1276,12 +1278,12 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
 
 void PS2Runtime::handleBreak(uint8_t *rdram, R5900Context *ctx)
 {
-    raiseCop0Exception(ctx, EXCEPTION_BREAKPOINT);
+    raiseCop0Exception(ctx, PS2_EXCEPTION_BREAKPOINT);
 }
 
 void PS2Runtime::handleTrap(uint8_t *rdram, R5900Context *ctx)
 {
-    raiseCop0Exception(ctx, EXCEPTION_TRAP);
+    raiseCop0Exception(ctx, PS2_EXCEPTION_TRAP);
 }
 
 void PS2Runtime::handleTLBR(uint8_t *rdram, R5900Context *ctx)
@@ -1294,7 +1296,7 @@ void PS2Runtime::handleTLBR(uint8_t *rdram, R5900Context *ctx)
     const uint32_t index = ctx->cop0_index & 0x3Fu;
     if (!m_memory.tlbRead(index, vpn, pfn, mask, valid))
     {
-        raiseCop0Exception(ctx, EXCEPTION_RESERVED_INSTRUCTION);
+        raiseCop0Exception(ctx, PS2_EXCEPTION_RESERVED_INSTRUCTION);
         return;
     }
 
@@ -1316,7 +1318,7 @@ void PS2Runtime::handleTLBWI(uint8_t *rdram, R5900Context *ctx)
 
     if (!m_memory.tlbWrite(index, vpn, pfn, mask, valid))
     {
-        raiseCop0Exception(ctx, EXCEPTION_RESERVED_INSTRUCTION);
+        raiseCop0Exception(ctx, PS2_EXCEPTION_RESERVED_INSTRUCTION);
     }
 }
 
@@ -1325,7 +1327,7 @@ void PS2Runtime::handleTLBWR(uint8_t *rdram, R5900Context *ctx)
     const uint32_t entryCount = static_cast<uint32_t>(m_memory.tlbEntryCount());
     if (entryCount == 0)
     {
-        raiseCop0Exception(ctx, EXCEPTION_RESERVED_INSTRUCTION);
+        raiseCop0Exception(ctx, PS2_EXCEPTION_RESERVED_INSTRUCTION);
         return;
     }
 
@@ -1343,7 +1345,7 @@ void PS2Runtime::handleTLBWR(uint8_t *rdram, R5900Context *ctx)
 
     if (!m_memory.tlbWrite(random, vpn, pfn, mask, valid))
     {
-        raiseCop0Exception(ctx, EXCEPTION_RESERVED_INSTRUCTION);
+        raiseCop0Exception(ctx, PS2_EXCEPTION_RESERVED_INSTRUCTION);
         return;
     }
 
@@ -1958,7 +1960,7 @@ uint8_t PS2Runtime::Load8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_LOAD);
         return 0;
     }
 }
@@ -1971,7 +1973,7 @@ uint16_t PS2Runtime::Load16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_LOAD);
         return 0;
     }
 }
@@ -1984,7 +1986,7 @@ uint32_t PS2Runtime::Load32(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_LOAD);
         return 0;
     }
 }
@@ -1997,7 +1999,7 @@ uint64_t PS2Runtime::Load64(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_LOAD);
         return 0;
     }
 }
@@ -2010,7 +2012,7 @@ __m128i PS2Runtime::Load128(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_LOAD);
         return _mm_setzero_si128();
     }
 }
@@ -2024,7 +2026,7 @@ void PS2Runtime::Store8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint8
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
 
@@ -2037,7 +2039,7 @@ void PS2Runtime::Store16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
 
@@ -2050,7 +2052,7 @@ void PS2Runtime::Store32(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
 
@@ -2063,7 +2065,7 @@ void PS2Runtime::Store64(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
 
@@ -2078,7 +2080,7 @@ void PS2Runtime::Store128(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, __m
     }
     catch (const std::exception &)
     {
-        SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
+        SignalException(ctx, PS2_EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
 
@@ -2095,7 +2097,7 @@ bool PS2Runtime::isStopRequested() const
 
 void PS2Runtime::HandleIntegerOverflow(R5900Context *ctx)
 {
-    raiseCop0Exception(ctx, EXCEPTION_INTEGER_OVERFLOW);
+    raiseCop0Exception(ctx, PS2_EXCEPTION_INTEGER_OVERFLOW);
 }
 
 void PS2Runtime::run()
@@ -2196,6 +2198,19 @@ void PS2Runtime::run()
             {
                 sndBankSeCheck = readGuestS16(kSndSeCheckAddr + (sndTransBank * 2u));
             }
+            // Read the guest heap watermark (sbrk pointer DAT_001328a4)
+            constexpr uint32_t kGuestSbrkAddr = 0x001328a4u;
+            const uint32_t guestSbrk = readGuestU32Wrapped(m_memory.getRDRAM(), kGuestSbrkAddr);
+
+            // Milestone: detect first GIF activity
+            static bool s_gifMilestoneLogged = false;
+            if (!s_gifMilestoneLogged && curGif > 0)
+            {
+                s_gifMilestoneLogged = true;
+                std::cout << "[MILESTONE] First GIF transfer detected at tick=" << tick
+                          << " gif=" << curGif << " — rendering pipeline is active!" << std::endl;
+            }
+
             std::cout << "[run:tick] tick=" << tick
                       << " pc=0x" << std::hex << dbgPc
                       << " ra=0x" << dbgRa
@@ -2209,6 +2224,7 @@ void PS2Runtime::run()
                       << " gif=" << curGif
                       << " gsw=" << curGs
                       << " vif=" << curVif
+                      << " heap=0x" << std::hex << guestSbrk << std::dec
                       << " sndType=" << sndTransType
                       << " sndLvl=" << sndTransLevel
                       << " sndBank=" << sndTransBank
@@ -2223,6 +2239,7 @@ void PS2Runtime::run()
 
         BeginDrawing();
         ClearBackground(BLACK);
+        DrawRectangle(0, 0, 640, 448, RED);
         DrawTexture(frameTex, 0, 0, WHITE);
         EndDrawing();
 

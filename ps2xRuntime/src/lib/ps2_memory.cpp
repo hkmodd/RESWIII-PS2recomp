@@ -89,12 +89,14 @@ namespace
 }
 
 // Helpers for GS VRAM addressing (PSMCT32 path).
+/*
 static inline uint32_t gs_vram_offset(uint32_t basePage, uint32_t x, uint32_t y, uint32_t fbw)
 {
     // basePage is in 2048-byte units; fbw is in blocks of 64 pixels.
     uint32_t strideBytes = fbw * 64 * 4;
     return basePage * 2048 + y * strideBytes + x * 4;
 }
+*/
 
 PS2Memory::PS2Memory()
     : m_rdram(nullptr), m_scratchpad(nullptr), iop_ram(nullptr), m_seenGifCopy(false), m_gsVRAM(nullptr)
@@ -836,6 +838,22 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                 }
                 
                 std::cout << "[DMA] KICK ACTUALLY STARTED addr=0x" << std::hex << address << " val=0x" << value << std::dec << std::endl;
+                
+                uint32_t channelBase = address & 0xFFFFFF00;
+                if (channelBase == 0x10009000 || channelBase == 0x1000A000) {
+                    uint32_t madr = m_ioRegisters[channelBase + 0x10];
+                    uint32_t qwc = m_ioRegisters[channelBase + 0x20];
+                    std::cout << "[DMA DUMP] channel=" << std::hex << channelBase << " madr=" << madr << " qwc=" << qwc << "\n";
+                    for(int i=0; i<64; i+=16) {
+                        if (madr + i + 15 < PS2_RAM_SIZE) {
+                            std::cout << "  " << std::hex << *(uint32_t*)&m_rdram[madr+i] << " " 
+                                      << *(uint32_t*)&m_rdram[madr+i+4] << " " 
+                                      << *(uint32_t*)&m_rdram[madr+i+8] << " " 
+                                      << *(uint32_t*)&m_rdram[madr+i+12] << "\n";
+                        }
+                    }
+                    std::cout << std::dec;
+                }
             }
 
             const uint32_t channelBase = address & 0xFFFFFF00;

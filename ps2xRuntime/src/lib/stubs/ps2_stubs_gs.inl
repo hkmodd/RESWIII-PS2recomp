@@ -758,14 +758,8 @@ void sceGsSyncPath(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 
 void sceGsSyncV(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 {
-    const uint64_t tick = ps2_syscalls::WaitForNextVSyncTick(rdram, runtime);
-    if (g_gparam.interlace != 0u)
-    {
-        setReturnS32(ctx, getGsSyncVFieldForTick(tick));
-        return;
-    }
-
-    setReturnS32(ctx, 1);
+    std::cout << "[GS] sceGsSyncV called - forcing VBLANK OK\n";
+    setReturnS32(ctx, 0);
 }
 
 void sceGsSyncVCallback(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)

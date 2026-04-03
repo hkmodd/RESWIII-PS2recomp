@@ -28,8 +28,8 @@ namespace
     constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
     constexpr uint32_t COP0_STATUS_EXL = 0x00000002u;
     constexpr uint32_t COP0_STATUS_BEV = 0x00400000u;
-    constexpr uint32_t EXCEPTION_VECTOR_GENERAL = 0x80000080u;
-    constexpr uint32_t EXCEPTION_VECTOR_BOOT = 0xBFC00200u;
+    constexpr uint32_t PS2_EXCEPTION_VECTOR_GENERAL = 0x80000080u;
+    constexpr uint32_t PS2_EXCEPTION_VECTOR_BOOT = 0xBFC00200u;
 
     constexpr int KE_OK = 0;
 
@@ -502,15 +502,15 @@ void register_ps2_runtime_expansion_tests()
             ctx.cop0_status = 0u;
             ctx.cop0_cause = 0u;
 
-            runtime.SignalException(&ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
+            runtime.SignalException(&ctx, PS2_EXCEPTION_ADDRESS_ERROR_LOAD);
 
             t.Equals(ctx.cop0_epc, 0x1FFCu, "delay-slot exception should capture branch_pc in EPC");
             t.IsTrue((ctx.cop0_cause & COP0_CAUSE_BD) != 0u, "delay-slot exception should set CAUSE.BD");
             t.Equals(ctx.cop0_cause & COP0_CAUSE_EXCCODE_MASK,
-                     (static_cast<uint32_t>(EXCEPTION_ADDRESS_ERROR_LOAD) << 2) & COP0_CAUSE_EXCCODE_MASK,
+                     (static_cast<uint32_t>(PS2_EXCEPTION_ADDRESS_ERROR_LOAD) << 2) & COP0_CAUSE_EXCCODE_MASK,
                      "CAUSE.EXCCODE should match exception");
             t.IsTrue((ctx.cop0_status & COP0_STATUS_EXL) != 0u, "exception should set STATUS.EXL");
-            t.Equals(ctx.pc, EXCEPTION_VECTOR_GENERAL, "exception should jump to general vector when BEV=0");
+            t.Equals(ctx.pc, PS2_EXCEPTION_VECTOR_GENERAL, "exception should jump to general vector when BEV=0");
             t.IsFalse(ctx.in_delay_slot, "exception delivery should clear delay-slot state");
         });
 
@@ -524,11 +524,11 @@ void register_ps2_runtime_expansion_tests()
             ctx.cop0_status = COP0_STATUS_BEV;
             ctx.cop0_cause = COP0_CAUSE_BD;
 
-            runtime.SignalException(&ctx, EXCEPTION_ADDRESS_ERROR_STORE);
+            runtime.SignalException(&ctx, PS2_EXCEPTION_ADDRESS_ERROR_STORE);
 
             t.Equals(ctx.cop0_epc, 0x3000u, "non-delay exception should capture current pc in EPC");
             t.IsTrue((ctx.cop0_cause & COP0_CAUSE_BD) == 0u, "non-delay exception should clear CAUSE.BD");
-            t.Equals(ctx.pc, EXCEPTION_VECTOR_BOOT, "BEV=1 should route exception to boot vector");
+            t.Equals(ctx.pc, PS2_EXCEPTION_VECTOR_BOOT, "BEV=1 should route exception to boot vector");
         });
 
         tc.Run("handleSyscall rejects invocation in delay slot", [](TestCase &t)

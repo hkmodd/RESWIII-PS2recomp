@@ -508,7 +508,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
         }
         case IROp::IR_NOP:
             if (!inst.comment.empty() && inst.comment.find("[UNHANDLED]") == 0) {
-                out << "runtime->SignalException(ctx, EXCEPTION_UNKNOWN_INSTRUCTION); return; // " << inst.comment;
+                out << "runtime->SignalException(ctx, PS2_EXCEPTION_UNKNOWN_INSTRUCTION); return; // " << inst.comment;
             } else {
                 out << "// NOP";
             }
@@ -777,7 +777,7 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << "runtime->handleSyscall(rdram, ctx)";
             break;
         case IROp::IR_BREAK:
-            out << "runtime->SignalException(ctx, EXCEPTION_BREAKPOINT); return";
+            out << "runtime->SignalException(ctx, PS2_EXCEPTION_BREAKPOINT); return";
             break;
         case IROp::IR_EI:
             out << "ctx->cop0_status |= 0x1 /* ei: set IE (bit 0) only */";
@@ -787,9 +787,9 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             break;
         default:
             if (inst.result.type != IRType::Void) {
-                out << "([&]() -> " << getCType(inst.result.type) << " { runtime->SignalException(ctx, EXCEPTION_UNKNOWN_INSTRUCTION); std::abort(); return " << getCType(inst.result.type) << "{}; })() /* UNHANDLED OPCODE: " << getOpString(inst.op) << " */";
+                out << "([&]() -> " << getCType(inst.result.type) << " { runtime->SignalException(ctx, PS2_EXCEPTION_UNKNOWN_INSTRUCTION); std::abort(); return " << getCType(inst.result.type) << "{}; })() /* UNHANDLED OPCODE: " << getOpString(inst.op) << " */";
             } else {
-                out << "runtime->SignalException(ctx, EXCEPTION_UNKNOWN_INSTRUCTION); return; // UNHANDLED OPCODE: " << getOpString(inst.op);
+                out << "runtime->SignalException(ctx, PS2_EXCEPTION_UNKNOWN_INSTRUCTION); return; // UNHANDLED OPCODE: " << getOpString(inst.op);
             }
             break;
     }

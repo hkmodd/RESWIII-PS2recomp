@@ -1050,7 +1050,7 @@ namespace ps2recomp
             return fmt::format(
                 "{{ uint32_t tmp; bool ov; "
                 "ADD32_OV(GPR_U32(ctx, {}), (int32_t){}, tmp, ov); "
-                "if (ov) runtime->SignalException(ctx, EXCEPTION_INTEGER_OVERFLOW); "
+                "if (ov) runtime->SignalException(ctx, PS2_EXCEPTION_INTEGER_OVERFLOW); "
                 "else SET_GPR_S32(ctx, {}, (int32_t)tmp); }}",
                 inst.rs, inst.simmediate, inst.rt);
 
@@ -1117,7 +1117,7 @@ namespace ps2recomp
                 "int64_t imm = (int64_t)(int32_t){}; "
                 "int64_t res = src + imm; "
                 "if (((src ^ imm) >= 0) && ((src ^ res) < 0)) "
-                "    runtime->SignalException(ctx, EXCEPTION_INTEGER_OVERFLOW); "
+                "    runtime->SignalException(ctx, PS2_EXCEPTION_INTEGER_OVERFLOW); "
                 "else SET_GPR_S64(ctx, {}, res); }}",
                 inst.rs, inst.simmediate, inst.rt);
         case OPCODE_DADDIU:
@@ -1326,7 +1326,7 @@ namespace ps2recomp
                 "    int32_t rt_val = GPR_S32(ctx, {}); "
                 "    int64_t result = (int64_t)rs_val + (int64_t)rt_val; "
                 "    if (result > INT32_MAX || result < INT32_MIN) {{ "
-                "        runtime->SignalException(ctx, EXCEPTION_INTEGER_OVERFLOW); "
+                "        runtime->SignalException(ctx, PS2_EXCEPTION_INTEGER_OVERFLOW); "
                 "    }} else {{ "
                 "        SET_GPR_S32(ctx, {}, (int32_t)result); "
                 "    }} "
@@ -1338,7 +1338,7 @@ namespace ps2recomp
             return fmt::format(
                 "{{ uint32_t tmp; bool ov; "
                 "SUB32_OV(GPR_U32(ctx, {}), GPR_U32(ctx, {}), tmp, ov); "
-                "if (ov) runtime->SignalException(ctx, EXCEPTION_INTEGER_OVERFLOW); "
+                "if (ov) runtime->SignalException(ctx, PS2_EXCEPTION_INTEGER_OVERFLOW); "
                 "else SET_GPR_S32(ctx, {}, (int32_t)tmp); }}",
                 inst.rs, inst.rt, inst.rd);
         case SPECIAL_SUBU:
@@ -1368,7 +1368,7 @@ namespace ps2recomp
                 "{{ int64_t a = (int64_t)GPR_S64(ctx, {}); "
                 "int64_t b = (int64_t)GPR_S64(ctx, {}); "
                 "int64_t r = a + b; "
-                "if (((a ^ b) >= 0) && ((a ^ r) < 0)) runtime->SignalException(ctx, EXCEPTION_INTEGER_OVERFLOW); "
+                "if (((a ^ b) >= 0) && ((a ^ r) < 0)) runtime->SignalException(ctx, PS2_EXCEPTION_INTEGER_OVERFLOW); "
                 "else SET_GPR_S64(ctx, {}, r); }}",
                 inst.rs, inst.rt, inst.rd);
         case SPECIAL_DADDU:
@@ -1380,7 +1380,7 @@ namespace ps2recomp
                 "{{ int64_t a = (int64_t)GPR_S64(ctx, {}); "
                 "int64_t b = (int64_t)GPR_S64(ctx, {}); "
                 "int64_t r = a - b; "
-                "if (((a ^ b) < 0) && ((a ^ r) < 0)) runtime->SignalException(ctx, EXCEPTION_INTEGER_OVERFLOW); "
+                "if (((a ^ b) < 0) && ((a ^ r) < 0)) runtime->SignalException(ctx, PS2_EXCEPTION_INTEGER_OVERFLOW); "
                 "else SET_GPR_S64(ctx, {}, r); }}",
                 inst.rs, inst.rt, inst.rd);
         case SPECIAL_DSUBU:

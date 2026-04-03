@@ -32,15 +32,15 @@
 
 enum PS2Exception
 {
-    EXCEPTION_TLB_REFILL = 0x02,          // TLB refill/load exception
-    EXCEPTION_ADDRESS_ERROR_LOAD = 0x04,  // Address error on load
-    EXCEPTION_ADDRESS_ERROR_STORE = 0x05, // Address error on store
-    EXCEPTION_SYSCALL = 0x08,             // SYSCALL instruction
-    EXCEPTION_BREAKPOINT = 0x09,          // BREAK instruction
-    EXCEPTION_RESERVED_INSTRUCTION = 0x0A,
-    EXCEPTION_INTEGER_OVERFLOW = 0x0C, // From MIPS spec
-    EXCEPTION_TRAP = 0x0D,             // Trap instruction condition met
-    EXCEPTION_UNKNOWN_INSTRUCTION = 0x99, // Unhandled MIPS instruction (Compiler Kill-Switch)
+    PS2_EXCEPTION_TLB_REFILL = 0x02,          // TLB refill/load exception
+    PS2_EXCEPTION_ADDRESS_ERROR_LOAD = 0x04,  // Address error on load
+    PS2_EXCEPTION_ADDRESS_ERROR_STORE = 0x05, // Address error on store
+    PS2_EXCEPTION_SYSCALL = 0x08,             // SYSCALL instruction
+    PS2_EXCEPTION_BREAKPOINT = 0x09,          // BREAK instruction
+    PS2_EXCEPTION_RESERVED_INSTRUCTION = 0x0A,
+    PS2_EXCEPTION_INTEGER_OVERFLOW = 0x0C, // From MIPS spec
+    PS2_EXCEPTION_TRAP = 0x0D,             // Trap instruction condition met
+    PS2_EXCEPTION_UNKNOWN_INSTRUCTION = 0x99, // Unhandled MIPS instruction (Compiler Kill-Switch)
 };
 
 // PS2 CPU context (R5900)
