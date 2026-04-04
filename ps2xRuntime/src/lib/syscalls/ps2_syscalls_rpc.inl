@@ -962,54 +962,8 @@ void SifCallRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 
     if (endFunc)
     {
-        bool callbackInvoked = rpcInvokeFunction(rdram, ctx, runtime, endFunc, endParam, 0, 0, 0, nullptr);
-
-        if (!callbackInvoked && (endFunc == 0x2fac20u || endFunc == 0x2fac30u))
-        {
-            const uint32_t normalizedEndFunc = endFunc - 0x10000u;
-            callbackInvoked = rpcInvokeFunction(rdram, ctx, runtime, normalizedEndFunc, endParam, 0, 0, 0, nullptr);
-        }
-
-        const bool isSoundRpcCallback =
-            (endFunc == 0x2eac20u || endFunc == 0x2eac30u ||
-             endFunc == 0x2fac20u || endFunc == 0x2fac30u);
-        if (isSoundRpcCallback)
-        {
-            uint32_t semaId = static_cast<uint32_t>(client->hdr.sema_id);
-            if (semaId == 0xFFFFFFFFu || semaId == 0u)
-            {
-                semaId = endParam;
-            }
-            (void)signalRpcCompletionSema(semaId);
-            if (rdram && (endFunc == 0x2eac30u || endFunc == 0x2fac30u))
-            {
-                constexpr uint32_t kSndBusyFlagAddr = 0x01E212C8u;
-                if (uint32_t *busy = reinterpret_cast<uint32_t *>(getMemPtr(rdram, kSndBusyFlagAddr)))
-                {
-                    *busy = 0u;
-                }
-            }
-        }
-
-        if (!callbackInvoked)
-        {
-            uint32_t semaId = static_cast<uint32_t>(client->hdr.sema_id);
-            if (semaId == 0xFFFFFFFFu || semaId == 0u)
-            {
-                semaId = endParam;
-            }
-            const bool fallbackSignaledSema = signalRpcCompletionSema(semaId);
-
-            static uint32_t unresolvedEndFuncWarnCount = 0;
-            if (unresolvedEndFuncWarnCount < 32u)
-            {
-                std::cerr << "[SifCallRpc] unresolved end callback endFunc=0x" << std::hex << endFunc
-                          << " semaId=0x" << semaId
-                          << " fallbackSignal=" << std::dec << (fallbackSignaledSema ? 1 : 0)
-                          << std::endl;
-                ++unresolvedEndFuncWarnCount;
-            }
-        }
+        uint32_t semaId = static_cast<uint32_t>(client->hdr.sema_id);
+        runtime->EnqueueDeferredSifCallback(endFunc, endParam, semaId);
     }
 
     static int logCount = 0;
@@ -1317,4 +1271,66 @@ void sceRpcGetPacket(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 {
     uint32_t queuePtr = getRegU32(ctx, 4);
     setReturnS32(ctx, static_cast<int32_t>(queuePtr));
+}
+
+void ps2_syscalls::DispatchDeferredSifCallbacks(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+{
+    while (true)
+    {
+        PS2Runtime::DeferredSifCallback cb;
+        if (!runtime->DequeueDeferredSifCallback(cb))
+        {
+            break;
+        }
+
+        bool callbackInvoked = rpcInvokeFunction(rdram, ctx, runtime, cb.endFunc, cb.endParam, 0, 0, 0, nullptr);
+
+        if (!callbackInvoked && (cb.endFunc == 0x2fac20u || cb.endFunc == 0x2fac30u))
+        {
+            const uint32_t normalizedEndFunc = cb.endFunc - 0x10000u;
+            callbackInvoked = rpcInvokeFunction(rdram, ctx, runtime, normalizedEndFunc, cb.endParam, 0, 0, 0, nullptr);
+        }
+
+        const bool isSoundRpcCallback =
+            (cb.endFunc == 0x2eac20u || cb.endFunc == 0x2eac30u ||
+             cb.endFunc == 0x2fac20u || cb.endFunc == 0x2fac30u);
+
+        if (isSoundRpcCallback)
+        {
+            uint32_t semaId = static_cast<uint32_t>(cb.semaId);
+            if (semaId == 0xFFFFFFFFu || semaId == 0u)
+            {
+                semaId = cb.endParam;
+            }
+            (void)signalRpcCompletionSema(semaId);
+            if (rdram && (cb.endFunc == 0x2eac30u || cb.endFunc == 0x2fac30u))
+            {
+                constexpr uint32_t kSndBusyFlagAddr = 0x01E212C8u;
+                if (uint32_t *busy = reinterpret_cast<uint32_t *>(getMemPtr(rdram, kSndBusyFlagAddr)))
+                {
+                    *busy = 0u;
+                }
+            }
+        }
+
+        if (!callbackInvoked)
+        {
+            uint32_t semaId = static_cast<uint32_t>(cb.semaId);
+            if (semaId == 0xFFFFFFFFu || semaId == 0u)
+            {
+                semaId = cb.endParam;
+            }
+            const bool fallbackSignaledSema = signalRpcCompletionSema(semaId);
+
+            static uint32_t unresolvedEndFuncWarnCount = 0;
+            if (unresolvedEndFuncWarnCount < 32u)
+            {
+                std::cerr << "[SifCallRpc] unresolved deferred end callback endFunc=0x" << std::hex << cb.endFunc
+                          << " semaId=0x" << semaId
+                          << " fallbackSignal=" << std::dec << (fallbackSignaledSema ? 1 : 0)
+                          << std::endl;
+                ++unresolvedEndFuncWarnCount;
+            }
+        }
+    }
 }

@@ -43,6 +43,10 @@ namespace ps2_syscalls
 
     bool dispatchNumericSyscall(uint32_t syscallNumber, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        if (syscallNumber != 0) {
+            std::cout << "[Syscall] Called 0x" << std::hex << syscallNumber << " at pc=0x" << ctx->pc << " ra=0x" << getRegU32(ctx, 31) << std::dec << std::endl;
+        }
+
         if (dispatchSyscallOverride(syscallNumber, rdram, ctx, runtime))
         {
             return true;

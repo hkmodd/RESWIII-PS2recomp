@@ -8,6 +8,7 @@
 #include <map>
 #include <string>
 #include <functional>
+#include <deque>
 #if defined(_MSC_VER)
 #include <intrin.h>
 #elif defined(USE_SSE2NEON)
@@ -428,6 +429,15 @@ public:
     void handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encodedSyscallId);
     void handleBreak(uint8_t *rdram, R5900Context *ctx);
 
+    struct DeferredSifCallback {
+        uint32_t endFunc;
+        uint32_t endParam;
+        int32_t semaId;
+    };
+    void EnqueueDeferredSifCallback(uint32_t endFunc, uint32_t endParam, int32_t semaId);
+    bool DequeueDeferredSifCallback(DeferredSifCallback& out);
+    bool HasDeferredSifCallbacks();
+
     void handleTrap(uint8_t *rdram, R5900Context *ctx);
     void handleTLBR(uint8_t *rdram, R5900Context *ctx);
     void handleTLBWI(uint8_t *rdram, R5900Context *ctx);
@@ -559,6 +569,8 @@ private:
     mutable std::atomic<uint32_t> m_guestExecutionWaiters{0u};
     mutable std::mutex m_guestHeapMutex;
     mutable std::mutex m_asyncCallbackStackMutex;
+    std::mutex m_deferredSifMutex;
+    std::deque<DeferredSifCallback> m_deferredSifCallbacks;
     std::vector<GuestHeapBlock> m_guestHeapBlocks;
     uint32_t m_guestHeapBase = 0x00100000u;
     uint32_t m_guestHeapEnd = 0x00100000u;

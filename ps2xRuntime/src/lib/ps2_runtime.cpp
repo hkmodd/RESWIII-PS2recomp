@@ -1004,6 +1004,32 @@ void PS2Runtime::configureIoPathsFromElf(const std::string &elfPath)
     setIoPaths(paths);
 }
 
+void PS2Runtime::EnqueueDeferredSifCallback(uint32_t endFunc, uint32_t endParam, int32_t semaId)
+{
+    std::lock_guard<std::mutex> lock(m_deferredSifMutex);
+    DeferredSifCallback cb;
+    cb.endFunc = endFunc;
+    cb.endParam = endParam;
+    cb.semaId = semaId;
+    m_deferredSifCallbacks.push_back(cb);
+}
+
+bool PS2Runtime::DequeueDeferredSifCallback(DeferredSifCallback& out)
+{
+    std::lock_guard<std::mutex> lock(m_deferredSifMutex);
+    if (m_deferredSifCallbacks.empty())
+        return false;
+    out = m_deferredSifCallbacks.front();
+    m_deferredSifCallbacks.pop_front();
+    return true;
+}
+
+bool PS2Runtime::HasDeferredSifCallbacks()
+{
+    std::lock_guard<std::mutex> lock(m_deferredSifMutex);
+    return !m_deferredSifCallbacks.empty();
+}
+
 void PS2Runtime::registerFunction(uint32_t address, RecompiledFunction func)
 {
     m_functionTable[address] = func;
@@ -1831,14 +1857,13 @@ void PS2Runtime::dispatchLoop(uint8_t *rdram, R5900Context *ctx)
         const uint32_t dispatchedPc = pc;
         const uint32_t dispatchedRa = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[31], 0));
 
-        // Diagnostic: trace the init-loop transition
+        // Diagnostic: trace all initial dispatches
         {
-            static int s_initDiagCount = 0;
-            if (s_initDiagCount < 200 && (pc == 0x119ce8u || pc == 0x11a6d8u || pc == 0x11a6a8u || pc == 0x1001a0u))
+            static int s_allDiagCount = 0;
+            if (++s_allDiagCount < 500)
             {
-                ++s_initDiagCount;
-                std::cerr << "[INIT-DIAG] #" << s_initDiagCount
-                          << " dispatch pc=0x" << std::hex << pc
+                std::cerr << "[DISPATCH] #" << s_allDiagCount
+                          << " pc=0x" << std::hex << pc
                           << " ra=0x" << dispatchedRa
                           << " sp=0x" << static_cast<uint32_t>(_mm_extract_epi32(ctx->r[29], 0))
                           << std::dec << std::endl;
@@ -1848,6 +1873,11 @@ void PS2Runtime::dispatchLoop(uint8_t *rdram, R5900Context *ctx)
         {
             GuestExecutionScope guestExecution(this);
             fn(rdram, ctx, this);
+        }
+
+        if (HasDeferredSifCallbacks())
+        {
+            ps2_syscalls::DispatchDeferredSifCallbacks(rdram, ctx, this);
         }
 
         // Diagnostic: trace what happened after the init function returned

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <algorithm>
 #include <iostream>
+#include <fstream>
 
 namespace
 {
@@ -12,6 +13,31 @@ namespace
 
     void StarWarsSifOverrides(PS2Runtime &runtime)
     {
+        // ────────────────────────────────────────────────────
+        //  PRELOAD COREC.BIN AND CORED.BIN
+        // ────────────────────────────────────────────────────
+        {
+            auto loadModule = [&](const std::string& name, uint32_t addr) {
+                auto path = PS2Runtime::getIoPaths().elfDirectory / name;
+                std::ifstream file(path, std::ios::binary | std::ios::ate);
+                if (file.is_open()) {
+                    std::streamsize size = file.tellg();
+                    file.seekg(0, std::ios::beg);
+                    std::vector<char> buffer(size);
+                    if (file.read(buffer.data(), size)) {
+                        for (size_t i = 0; i < size; ++i) {
+                            runtime.memory().write8(addr + i, buffer[i]);
+                        }
+                        std::cerr << "[PRELOAD] Loaded " << name << " (" << size << " bytes) to 0x" << std::hex << addr << std::dec << std::endl;
+                    }
+                } else {
+                    std::cerr << "[PRELOAD] Error opening " << path << std::endl;
+                }
+            };
+            
+            loadModule("corec.bin", 0x001c2680);
+            loadModule("cored.bin", 0x009bc400);
+        }
         // ────────────────────────────────────────────────────
         //  FIX #1: Bulk asset-buffer allocator (FUN_0012e810)
         //
@@ -201,6 +227,43 @@ namespace
                 return;
             }
 
+            // Fix for custom SIF RPC sid=0x12345 (deadlock / main thread crash)
+            uint32_t sid = runtimePtr->memory().read32(clientPtr + 12);
+            if (sid == 0x12345) {
+                uint32_t sp = getRegU32(ctx, 29);
+                uint32_t recvBuf = runtimePtr->memory().read32(sp + 0x14);
+                uint32_t recvSize = runtimePtr->memory().read32(sp + 0x18);
+                
+                std::cerr << "[StarWars:SifCallRpc] Override for SID 0x12345 executed" << std::endl;
+
+                // 1) Write forced expected values to recvBuf (0x9a4800)
+                if (recvBuf && recvSize > 0) {
+                    for (uint32_t i = 0; i < recvSize; i++) {
+                        runtimePtr->memory().write8(recvBuf + i, 0);
+                    }
+                    if (recvSize >= 4) {
+                        runtimePtr->memory().write32(recvBuf, 1); // mark completed
+                    }
+                }
+
+                // 2) Execute logic of missing callback 0x75e5f0 (which jumps to 0x75a830)
+                uint32_t gp = getRegU32(ctx, 28);
+                runtimePtr->memory().write32(gp - 0x6ca4, 0);
+                runtimePtr->memory().write32(gp - 0x6bf4, 0);
+                runtimePtr->memory().write32(gp - 0x6bf0, 0);
+                runtimePtr->memory().write32(gp - 0x6c90, 0);
+
+                // 3) Forcefully wake up Thread 3 (Sif poll thread)
+                __m128i old_a0 = ctx->r[4];
+                ctx->r[4] = _mm_set_epi64x(0, 3LL);
+                ps2_syscalls::WakeupThread(rdram, ctx, runtimePtr);
+                ctx->r[4] = old_a0;
+
+                setReturnS32(ctx, 0);
+                ctx->pc = getRegU32(ctx, 31);
+                return;
+            }
+
             // Fallback for all other RPCs
             ps2_syscalls::SifCallRpc(rdram, ctx, runtimePtr);
             ctx->pc = getRegU32(ctx, 31);
@@ -253,6 +316,22 @@ namespace
             ctx->pc = getRegU32(ctx, 31);
         };
         runtime.registerFunction(0x001002b0, overrideSleepDelay);
+
+        // ────────────────────────────────────────────────────
+        //  IPU/DMA Sync flag override (0x12f4e0)
+        //  The game spins on `lbu v1, -0x7a94(gp)` which translates to 0x1afa5c.
+        //  This flag is normally set to 1 by an interrupt handler upon DMA completion.
+        //  Since we HLE the DMA and don't fire hardware interrupts, it stays 0 forever.
+        //  We intercept the loop and immediately return to unblock the engine.
+        // ────────────────────────────────────────────────────
+        static auto overrideDmaSyncLoop = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+            uint32_t gp = getRegU32(ctx, 28);
+            // Write 1 to the polled flag just in case the engine checks it again later
+            rt->memory().write8(gp - 0x7A94, 1);
+            // Return to caller
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x0012f4e0, overrideDmaSyncLoop);
 
         // ────────────────────────────────────────────────────
         //  Enhance EndOfHeap logging: uncap the log limit
