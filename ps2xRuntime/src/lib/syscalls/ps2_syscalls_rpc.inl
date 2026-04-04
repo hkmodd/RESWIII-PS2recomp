@@ -1,3 +1,33 @@
+static bool signalRpcCompletionSema(uint32_t semaId)
+{
+    if (semaId == 0u || semaId > 0xFFFFu)
+    {
+        return false;
+    }
+
+    auto sema = lookupSemaInfo(static_cast<int>(semaId));
+    if (!sema)
+    {
+        return false;
+    }
+
+    bool signaled = false;
+    {
+        std::lock_guard<std::mutex> lock(sema->m);
+        if (!sema->deleted && sema->count < sema->maxCount)
+        {
+            sema->count++;
+            signaled = true;
+        }
+    }
+
+    if (signaled)
+    {
+        sema->cv.notify_one();
+    }
+    return signaled;
+}
+
 void SifStopModule(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 {
     const int32_t moduleId = static_cast<int32_t>(getRegU32(ctx, 4)); // $a0
@@ -845,36 +875,6 @@ void SifCallRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
             resultPtr = recvBuf;
         }
     }
-
-    auto signalRpcCompletionSema = [&](uint32_t semaId) -> bool
-    {
-        if (semaId == 0u || semaId > 0xFFFFu)
-        {
-            return false;
-        }
-
-        auto sema = lookupSemaInfo(static_cast<int>(semaId));
-        if (!sema)
-        {
-            return false;
-        }
-
-        bool signaled = false;
-        {
-            std::lock_guard<std::mutex> lock(sema->m);
-            if (!sema->deleted && sema->count < sema->maxCount)
-            {
-                sema->count++;
-                signaled = true;
-            }
-        }
-
-        if (signaled)
-        {
-            sema->cv.notify_one();
-        }
-        return signaled;
-    };
 
     if (sid == 1u && (rpcNum == 0x12u || rpcNum == 0x13u))
     {
