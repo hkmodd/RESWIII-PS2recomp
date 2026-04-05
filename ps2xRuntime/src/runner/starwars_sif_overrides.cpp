@@ -335,7 +335,46 @@ namespace
                 static bool s_main_entered = false;
                 if (!s_main_entered) {
                     s_main_entered = true;
-                    std::cerr << "[DIAG] Natively entered main (0x129d40)." << std::endl;
+                    std::cerr << "[CRT] Entering main — initializing Metrowerks vtable (FUN_0067c890)..." << std::endl;
+
+                    // Call the CRT vtable initializer NOW, after BSS clear.
+                    // This populates all 50+ function pointer slots in the vtable at 0x9a0ab0.
+                    // _start (0x100008) zeroes BSS first, so we MUST populate AFTER that.
+                    R5900Context tempCtx = *ctx;
+                    tempCtx.pc = 0x67c890;
+                    // ra = return immediately (we don't care, we just need the side-effects)
+                    tempCtx.r[31] = _mm_set_epi64x(0, 0);  // ra = 0 (won't be used)
+                    ps2_FUN_0067c890_67c890(rdram, &tempCtx, rt);
+
+                    // Copy the vtable to a safe area outside BSS
+                    // BSS range: 0x1afa00 - 0xa9f580 (resets to zero on start).
+                    // Area above game heap (0x1F00000) is safe & unused.
+                    constexpr uint32_t SAFE_VTABLE = 0x1F00000;
+                    constexpr uint32_t VTABLE_SIZE = 0x120; // enough for all slots
+
+                    uint32_t vtableBase = rt->memory().read32(0x1af860);
+                    if (vtableBase && vtableBase >= 0x1afa00 && vtableBase < 0xa9f580) {
+                        // Vtable is in BSS — copy it out
+                        for (uint32_t off = 0; off < VTABLE_SIZE; off += 4) {
+                            uint32_t val = rt->memory().read32(vtableBase + off);
+                            rt->memory().write32(SAFE_VTABLE + off, val);
+                        }
+                        // Redirect the pointer to the safe copy
+                        rt->memory().write32(0x1af860, SAFE_VTABLE);
+
+                        uint32_t slotDc = rt->memory().read32(SAFE_VTABLE + 0xdc);
+                        uint32_t slot54 = rt->memory().read32(SAFE_VTABLE + 0x54);
+                        std::cerr << "[CRT] VTable RELOCATED from 0x" << std::hex << vtableBase
+                                  << " to 0x" << SAFE_VTABLE
+                                  << " [+0xdc]=0x" << slotDc
+                                  << " [+0x54]=0x" << slot54
+                                  << std::dec << std::endl;
+                    } else {
+                        uint32_t slotDc = vtableBase ? rt->memory().read32(vtableBase + 0xdc) : 0;
+                        std::cerr << "[CRT] VTable at 0x" << std::hex << vtableBase
+                                  << " [+0xdc]=0x" << slotDc
+                                  << std::dec << " (not in BSS, skipping relocation)" << std::endl;
+                    }
                 }
                 s_orig_main(rdram, ctx, rt);
             };
@@ -359,11 +398,21 @@ namespace
                 uint32_t vtableBase = rt->memory().read32(vtableAddr);
                 uint32_t slotDc = vtableBase ? rt->memory().read32(vtableBase + 0xdc) : 0;
 
-                // Log only the first 3 calls to ensure VTable survived into standard execution
-                if (callCount <= 3 || slotDc == 0) {
+                // Auto-repair: if something ovewrote vtable slots, rebuild them
+                if (slotDc == 0 && vtableBase != 0) {
+                    std::cerr << "[CRT:fix] Slot +0xdc is ZERO at call #" << callCount
+                              << " — re-running FUN_0067c890" << std::dec << std::endl;
+                    R5900Context tempCtx = *ctx;
+                    tempCtx.pc = 0x67c890;
+                    ps2_FUN_0067c890_67c890(rdram, &tempCtx, rt);
+                    slotDc = rt->memory().read32(vtableBase + 0xdc);
+                    std::cerr << "[CRT:fix] After re-init: [+0xdc]=0x" << std::hex << slotDc << std::dec << std::endl;
+                }
+
+                // Log only the first 3 calls
+                if (callCount <= 3) {
                     std::cerr << "[DIAG:12d660] #" << callCount
                               << " gp=0x" << std::hex << gp
-                              << " vtableAddr=0x" << vtableAddr
                               << " vtableBase=0x" << vtableBase
                               << " pc=0x" << ctx->pc
                               << " [base+0xdc]=0x" << slotDc
@@ -374,6 +423,53 @@ namespace
                 s_orig_12d660(rdram, ctx, rt);
             };
             runtime.registerFunction(0x12d660, wrapSprintf);
+        }
+
+        // ────────────────────────────────────────────────────
+        //  FIX #CRT3: Register Metrowerks CRT vtable label stubs
+        //
+        //  The CRT vtable at 0x9a0ab0 contains ~31 entries that point
+        //  to mid-function labels (LAB_*) which Ghidra identified as
+        //  labels, not standalone functions. The recompiler therefore
+        //  never generated code for them, causing pc-zero crashes
+        //  when the engine tries to jalr into them.
+        //
+        //  Most of these are I/O stubs (putchar, write, flush, etc.)
+        //  that can safely return 0 in our HLE environment.
+        // ────────────────────────────────────────────────────
+        {
+            static auto crtNoop = [](uint8_t*, R5900Context* ctx, PS2Runtime*) {
+                // Return 0 in v0 (register 2)
+                ctx->r[2] = _mm_set_epi64x(0, 0);
+            };
+
+            // All LAB_ entries from FUN_0067c890 vtable init
+            const uint32_t crtLabels[] = {
+                0x67d690, 0x67d680, 0x67d670, 0x67d660,  // putchar-like stubs
+                0x67d5c0,                                   // close stub
+                0x67dd00, 0x67dcf0,                         // read stubs
+                0x67d6f0, 0x67d6d0,                         // write stubs
+                0x67dcb0, 0x67dcc0,                         // seek stubs
+                0x67d7a0, 0x67d790, 0x67d780,               // buffer stubs
+                0x67d750, 0x67d710,                         // misc I/O
+                0x67dce0, 0x67dcd0,                         // position stubs
+                0x67d770, 0x67d760,                         // size stubs
+                0x67c880, 0x67c870, 0x67c860,               // init stubs
+                0x250d30,                                   // format label
+                0x2508a0,                                   // format helper
+                0x67d6a0, 0x67d6b0,                         // error stubs
+                0x67d5b0, 0x67d5a0, 0x67d550,               // exit/cleanup
+                0x67df30,                                   // alloc stub
+            };
+
+            int count = 0;
+            for (uint32_t addr : crtLabels) {
+                if (!runtime.lookupFunction(addr)) {
+                    runtime.registerFunction(addr, crtNoop);
+                    count++;
+                }
+            }
+            std::cerr << "[CRT] Registered " << count << " CRT label stubs as no-op" << std::endl;
         }
 
         // ────────────────────────────────────────────────────
@@ -398,6 +494,82 @@ namespace
         //   already logs, but only first 10 calls. We'll add
         //   a warning log here about the patch.)
         // ────────────────────────────────────────────────────
+        // ────────────────────────────────────────────────────
+        //  FIX #OVL1: Safe vtable dispatch for FUN_00803350
+        //
+        //  The overlay game-loop tick at 0x803350 does:
+        //    1. FUN_006c87d0() — scene init
+        //    2. FUN_00888ed0() — ref-count bump
+        //    3. FUN_0080ae30() — entity update
+        //    4. (*vtable[+0xfc])(obj, arg) — CRASHES if vtable not populated
+        //    5. FUN_0080aac0(0)
+        //    6. (*vtable[+0xc4])(obj, 1)
+        //
+        //  The vtable may be zero if the object at piRam001b07b4 hasn't been
+        //  fully constructed yet (e.g., scene constructor in overlay).
+        //  We wrap and skip null vtable calls to keep the engine alive.
+        // ────────────────────────────────────────────────────
+        {
+            static PS2Runtime::RecompiledFunction s_orig_803350 = nullptr;
+            s_orig_803350 = runtime.lookupFunction(0x803350);
+
+            if (s_orig_803350) {
+                static auto wrapGameTick = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                    static int tickCount = 0;
+                    tickCount++;
+
+                    // Read the object pointer: piRam001b07b4 = *(gp - 0x6d3c)
+                    uint32_t gp = getRegU32(ctx, 28);
+                    uint32_t objPtr = rt->memory().read32(gp - 0x6d3c);
+                    uint32_t vtable = objPtr ? rt->memory().read32(objPtr) : 0;
+                    uint32_t slotFc = vtable ? rt->memory().read32(vtable + 0xfc) : 0;
+                    uint32_t slotC4 = vtable ? rt->memory().read32(vtable + 0xc4) : 0;
+
+                    if (tickCount <= 3 || (slotFc == 0 && vtable != 0)) {
+                        std::cerr << "[OVL:803350] tick #" << tickCount
+                                  << " obj=0x" << std::hex << objPtr
+                                  << " vtable=0x" << vtable
+                                  << " [+0xfc]=0x" << slotFc
+                                  << " [+0xc4]=0x" << slotC4
+                                  << std::dec << std::endl;
+                    }
+
+                    if (slotFc == 0 || slotC4 == 0) {
+                        // vtable not ready — call the sub-functions but skip vtable calls
+                        auto fn1 = rt->lookupFunction(0x6c87d0);
+                        auto fn2 = rt->lookupFunction(0x888ed0);
+                        auto fn3 = rt->lookupFunction(0x80ae30);
+                        auto fn5 = rt->lookupFunction(0x80aac0);
+
+                        R5900Context sub = *ctx;
+                        if (fn1) { sub.pc = 0x6c87d0; fn1(rdram, &sub, rt); }
+                        sub = *ctx;
+                        if (fn2) { sub.pc = 0x888ed0; fn2(rdram, &sub, rt); }
+                        sub = *ctx;
+                        if (fn3) { sub.pc = 0x80ae30; fn3(rdram, &sub, rt); }
+
+                        // Skip vtable[+0xfc] call — it would crash
+                        if (tickCount <= 3)
+                            std::cerr << "[OVL:803350] Skipped vtable calls (slots not ready)" << std::endl;
+
+                        sub = *ctx;
+                        if (fn5) {
+                            sub.pc = 0x80aac0;
+                            sub.r[4] = _mm_set_epi64x(0, 0);  // a0 = 0
+                            fn5(rdram, &sub, rt);
+                        }
+                        // Skip vtable[+0xc4] call too
+                        ctx->pc = getRegU32(ctx, 31);  // return
+                    } else {
+                        // vtable is valid — call original
+                        s_orig_803350(rdram, ctx, rt);
+                    }
+                };
+                runtime.registerFunction(0x803350, wrapGameTick);
+                std::cerr << "[OVL] Hooked FUN_00803350 (game tick)" << std::endl;
+            }
+        }
+
         std::cerr << "[SW3] All overrides registered. Bulk allocator patch applied." << std::endl;
         std::cerr << "[SW3] Heap config: base=0x" << std::hex
                   << runtime.guestHeapBase() << " limit=0x8000000"
