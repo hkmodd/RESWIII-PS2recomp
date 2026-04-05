@@ -10,7 +10,6 @@
 namespace
 {
 
-    extern "C" void ps2_FUN_0067c890_67c890(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime);
 
     void StarWarsSifOverrides(PS2Runtime &runtime)
     {
@@ -332,15 +331,27 @@ namespace
 
         if (s_orig_main) {
             static auto wrapMain = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
-                static bool s_main_entered = false;
-                if (!s_main_entered) {
-                    s_main_entered = true;
-                    std::cerr << "[DIAG] Natively entered main (0x129d40)." << std::endl;
+                static bool s_crt_inited = false;
+                if (!s_crt_inited) {
+                    s_crt_inited = true;
+                    std::cerr << "[CRT] Lazy Repopulating CRT vtable at Main entry!" << std::endl;
+                    auto crtInitFn = rt->lookupFunction(0x0067c890);
+                    if (crtInitFn) {
+                        R5900Context crtCtx = {};
+                        crtCtx.r[28] = _mm_set_epi64x(0, 0x1b74f0);   // gp
+                        crtCtx.r[29] = _mm_set_epi64x(0, 0x01ff0000);  // sp (safe stack)
+                        crtCtx.r[31] = _mm_set_epi64x(0, 0xDEAD0000);  // ra (sentinel)
+                        crtCtx.pc = 0x0067c890;
+                        crtInitFn(rdram, &crtCtx, rt);
+                        std::cerr << "[CRT] VTable Repopulated! [0x1af860]=" << std::hex 
+                                  << rt->memory().read32(0x1af860) << std::dec << std::endl;
+                    }
                 }
+                // Call original main
                 s_orig_main(rdram, ctx, rt);
             };
             runtime.registerFunction(0x00129d40, wrapMain);
-            std::cerr << "[DIAG] Hooked main (0x129d40)." << std::endl;
+            std::cerr << "[DIAG] Hooked main (0x129d40) for lazy CRT initialization." << std::endl;
         }
 
         // ────────────────────────────────────────────────────

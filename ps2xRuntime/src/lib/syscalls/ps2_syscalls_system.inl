@@ -903,10 +903,12 @@ void QueryBootMode(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     setReturnU32(ctx, addr);
 }
 
-// 0x5B GetThreadTLS (stub): return 0
+// 0x5B GetThreadTLS
 void GetThreadTLS(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 {
-    auto info = ensureCurrentThreadInfo(ctx);
+    const int tid = static_cast<int>(getRegU32(ctx, 4)); // $a0
+    auto info = (tid == 0) ? ensureCurrentThreadInfo(ctx) : lookupThreadInfo(tid);
+
     if (!info)
     {
         setReturnU32(ctx, 0);

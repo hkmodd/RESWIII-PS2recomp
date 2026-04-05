@@ -1,5 +1,6 @@
 #include "ps2_memory.h"
 #include <iostream>
+#include <iostream>
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
@@ -495,6 +496,7 @@ __m128i PS2Memory::read128(uint32_t address)
 
 void PS2Memory::write8(uint32_t address, uint8_t value)
 {
+    if ((address & 0x0FFFFFFF) == 0x9a0b8c) std::cerr << "[MEM] write8 to 9a0b8c!\n";
     const bool scratch = isScratchpad(address);
     uint32_t physAddr = translateAddress(address);
 
@@ -519,6 +521,7 @@ void PS2Memory::write8(uint32_t address, uint8_t value)
 
 void PS2Memory::write16(uint32_t address, uint16_t value)
 {
+    if ((address & 0x0FFFFFFF) == 0x9a0b8c) std::cerr << "[MEM] write16 to 9a0b8c!\n";
     if (address & 1)
     {
         throw std::runtime_error("Unaligned 16-bit write at address: 0x" + std::to_string(address));
@@ -547,6 +550,12 @@ void PS2Memory::write16(uint32_t address, uint16_t value)
 
 void PS2Memory::write32(uint32_t address, uint32_t value)
 {
+    if ((address & 0x0FFFFFFF) == 0x1af860) {
+        std::cerr << "[MEMORY] >>> write32(0x1af860, 0x" << std::hex << value << std::dec << ") <<<\n";
+    }
+    if ((address & 0x0FFFFFFF) == 0x9a0b8c) {
+        std::cerr << "[MEMORY] >>> write32(0x9a0b8c, 0x" << std::hex << value << std::dec << ") <<<\n";
+    }
     if (address & 3)
     {
         throw std::runtime_error("Unaligned 32-bit write at address: 0x" + std::to_string(address));
@@ -606,6 +615,9 @@ void PS2Memory::write32(uint32_t address, uint32_t value)
 
 void PS2Memory::write64(uint32_t address, uint64_t value)
 {
+    if ((address & 0x0FFFFFFF) <= 0x9a0b8c && (address & 0x0FFFFFFF) + 8 > 0x9a0b8c) {
+        std::cerr << "[MEM] write64 covers 0x9a0b8c!\n";
+    }
     if (address & 7)
     {
         throw std::runtime_error("Unaligned 64-bit write at address: 0x" + std::to_string(address));
@@ -654,6 +666,10 @@ void PS2Memory::write64(uint32_t address, uint64_t value)
 
 void PS2Memory::write128(uint32_t address, __m128i value)
 {
+    if ((address & 0x0FFFFFFF) <= 0x9a0b8c && (address & 0x0FFFFFFF) + 16 > 0x9a0b8c) {
+        std::cerr << "[MEMORY] >>> write128 covers 0x9a0b8c! Base address=0x" << std::hex << address << std::dec << " <<<\n";
+    }
+
     if (address & 15)
     {
         throw std::runtime_error("Unaligned 128-bit write at address: 0x" + std::to_string(address));

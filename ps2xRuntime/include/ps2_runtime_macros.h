@@ -246,11 +246,13 @@ static inline __m128i Ps2FastRead128(const uint8_t *rdram, uint32_t addr)
 
 static inline void Ps2FastWrite8(uint8_t *rdram, uint32_t addr, uint8_t value)
 {
+    if ((addr & 0x0FFFFFFF) == 0x9a0b8c) std::cerr << "[FAST] write8 9a0b8c\n";
     rdram[addr & PS2_RAM_MASK] = value;
 }
 
 static inline void Ps2FastWrite16(uint8_t *rdram, uint32_t addr, uint16_t value)
 {
+    if ((addr & 0x0FFFFFFF) <= 0x9a0b8c && (addr & 0x0FFFFFFF) + 2 > 0x9a0b8c) std::cerr << "[FAST] write16 9a0b8c\n";
     const uint32_t offset = addr & PS2_RAM_MASK;
     if (!Ps2FastRangeIsContiguous(offset, sizeof(uint16_t)))
     {
@@ -267,6 +269,7 @@ static inline void Ps2FastWrite16(uint8_t *rdram, uint32_t addr, uint16_t value)
 
 static inline void Ps2FastWrite32(uint8_t *rdram, uint32_t addr, uint32_t value)
 {
+    if ((addr & 0x0FFFFFFF) <= 0x9a0b8c && (addr & 0x0FFFFFFF) + 4 > 0x9a0b8c) std::cerr << "[FAST] write32 9a0b8c: " << std::hex << value << std::dec << "\n";
     const uint32_t offset = addr & PS2_RAM_MASK;
     if (!Ps2FastRangeIsContiguous(offset, sizeof(uint32_t)))
     {
@@ -283,6 +286,7 @@ static inline void Ps2FastWrite32(uint8_t *rdram, uint32_t addr, uint32_t value)
 
 static inline void Ps2FastWrite64(uint8_t *rdram, uint32_t addr, uint64_t value)
 {
+    if ((addr & 0x0FFFFFFF) <= 0x9a0b8c && (addr & 0x0FFFFFFF) + 8 > 0x9a0b8c) std::cerr << "[FAST] write64 9a0b8c\n";
     const uint32_t offset = addr & PS2_RAM_MASK;
     if (!Ps2FastRangeIsContiguous(offset, sizeof(uint64_t)))
     {
@@ -299,6 +303,7 @@ static inline void Ps2FastWrite64(uint8_t *rdram, uint32_t addr, uint64_t value)
 
 static inline void Ps2FastWrite128(uint8_t *rdram, uint32_t addr, __m128i value)
 {
+    if ((addr & 0x0FFFFFFF) <= 0x9a0b8c && (addr & 0x0FFFFFFF) + 16 > 0x9a0b8c) std::cerr << "[FAST] write128 9a0b8c\n";
     const uint32_t offset = addr & PS2_RAM_MASK;
     if (!Ps2FastRangeIsContiguous(offset, sizeof(__m128i)))
     {
