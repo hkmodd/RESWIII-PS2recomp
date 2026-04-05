@@ -168,6 +168,7 @@ namespace
                       << " sendBuf=0x" << sendBuf
                       << " recvBuf=0x" << recvBuf
                       << " recvSize=0x" << recvSize
+                      << " endFunc=0x" << getRegU32(ctx, 11) << " / " << runtimePtr->memory().read32(sp + 0x1C)
                       << std::dec << std::endl;
 
             // Check if this is the cdvdman client
@@ -219,47 +220,47 @@ namespace
                 return;
             }
 
-            // Fix for custom SIF RPC sid=0x12345 (deadlock / main thread crash)
-            // It uses statically allocated clientPtr = 0x9a3c20 
+            // Fix for custom SIF RPC sid=6 (deadlock / main thread crash)
+            // It uses statically allocated clientPtr = 0x9a3c20 or 0x9a3d40
             if (clientPtr == 0x9a3c20 || clientPtr == 0x9a3d40) {
                 uint32_t sp = getRegU32(ctx, 29);
-                uint32_t recvBuf = runtimePtr->memory().read32(sp + 0x14);
-                uint32_t recvSize = runtimePtr->memory().read32(sp + 0x18);
+                // SN Systems ABI for >4 args uses t0-t3 for args 5-8, and stack starts at sp+32 for arg 9
+                uint32_t recvBuf = getRegU32(ctx, 9);   // t1
+                uint32_t recvSize = getRegU32(ctx, 10); // t2
+                uint32_t endFunc = getRegU32(ctx, 11);  // t3
+                uint32_t endParam = runtimePtr->memory().read32(sp + 32);
                 
-                std::cerr << "[StarWars:SifCallRpc] Override for SID 0x12345 executed" << std::endl;
+                std::cerr << "[StarWars:SifCallRpc] Override for SID " << sid << " executed" << std::endl;
 
-                // 1) Write forced expected values to recvBuf (0x9a4800)
+                // 1) Write zeroes to recvBuf
+                // By returning all zeroes, the parsing function (0x75e5f0) calculates 0 items
+                // instead of parsing garbage or causing bad pointers.
                 if (recvBuf && recvSize > 0) {
                     for (uint32_t i = 0; i < recvSize; i++) {
                         runtimePtr->memory().write8(recvBuf + i, 0);
                     }
-                    if (recvSize >= 4) {
-                        runtimePtr->memory().write32(recvBuf, 1); // mark completed
-                    }
+                    std::cerr << "[StarWars:SifCallRpc] Cleared " << recvSize << " bytes at 0x" << std::hex << recvBuf << std::dec << std::endl;
                 }
 
-                // 2) Execute logic of missing callback
-                // Instead of completely bypassing the SifCallRpc mechanisms which triggers crashes,
-                // we'll just queue a fake callback or do what the game needs. 
-                // But since the callback was supposed to be executed by Sif server, we just perform its logic here!
-                uint32_t gp = getRegU32(ctx, 28);
-                runtimePtr->memory().write32(gp - 0x6ca4, 0);
-                runtimePtr->memory().write32(gp - 0x6bf4, 0);
-                runtimePtr->memory().write32(gp - 0x6bf0, 0);
-                runtimePtr->memory().write32(gp - 0x6c90, 0);
-
-                // IMPORTANT: since we bypass entirely the native SifCallRpc, NO semaphore is automatically signaled!
-                // We MUST signal the SIF semaphore OR call the callback or else the game blocks!
-                // Original SifCallRpc usually invokes an interrupt to signal Semaphores or puts a function call in queue.
-                // Wait! In the previous CDVD hack we just did `iSignalSema` on id=3! Let's do that!
+                // 2) Provide a semaphore signal to avoid deadlock
                 __m128i old_a0 = ctx->r[4];
-                ctx->r[4] = _mm_set_epi64x(0, 3LL);
+                ctx->r[4] = _mm_set_epi64x(0, 3LL); // Fake CDVD/SIF semaphore ID=3
                 ps2_syscalls::iSignalSema(rdram, ctx, runtimePtr);
                 ctx->r[4] = old_a0;
 
-                setReturnS32(ctx, 0);
-                ctx->pc = getRegU32(ctx, 31);
-                return;
+                // 3) Execute the end function!
+                if (endFunc != 0) {
+                    std::cerr << "[StarWars:SifCallRpc] Calling endFunc 0x" << std::hex << endFunc << " arg 0x" << endParam << std::dec << std::endl;
+                    // Prepare arguments for endFunc(endParam)
+                    ctx->r[4] = _mm_set_epi64x(0, endParam); // a0 = end_param
+                    setReturnS32(ctx, 0);                    // sceSifCallRpc returns 0
+                    ctx->pc = endFunc;                       // jump to endFunc synchronously
+                    return;
+                } else {
+                    setReturnS32(ctx, 0);
+                    ctx->pc = getRegU32(ctx, 31);
+                    return;
+                }
             }
 
             // Fallback for all other RPCs
@@ -568,6 +569,62 @@ namespace
                 runtime.registerFunction(0x803350, wrapGameTick);
                 std::cerr << "[OVL] Hooked FUN_00803350 (game tick)" << std::endl;
             }
+        }
+
+        // ────────────────────────────────────────────────────
+        //  FIX #ABORT: Safe abort handler (FUN_00129580)
+        //
+        //  The game's internal ABORT function at 0x129580 formats
+        //  an error message then calls a display callback via:
+        //    *(*(*(iRam001b061c + 0x18) + 0x144) + 0x20)
+        //  That display vtable contains sentinel 0x12345 when not
+        //  initialized, causing a bad-pc crash.
+        //
+        //  We hook this to:
+        //  1. Log the abort error code (param in $a0)
+        //  2. Call FUN_00113780 (the printf) so cerr shows the message
+        //  3. Skip the display vtable call entirely
+        //  4. Return 0 (same as original)
+        // ────────────────────────────────────────────────────
+        {
+            static PS2Runtime::RecompiledFunction s_orig_abort = nullptr;
+            s_orig_abort = runtime.lookupFunction(0x129580);
+
+            auto safeAbort = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                const uint32_t errorCode = getRegU32(ctx, 4);
+                static int abortCount = 0;
+                ++abortCount;
+
+                // Try to read the error string from guest memory
+                // The param in a0 might be a guest pointer to a string
+                std::string errorStr = "<unknown>";
+                if (errorCode > 0x100000 && errorCode < 0x10000000) {
+                    // Looks like a valid guest address — read null-terminated string
+                    char buf[256] = {0};
+                    for (int i = 0; i < 255; ++i) {
+                        char c = static_cast<char>(rdram[errorCode + i]);
+                        if (c == 0) break;
+                        buf[i] = c;
+                    }
+                    errorStr = buf;
+                }
+
+                std::cerr << "[SW3:ABORT] #" << abortCount
+                          << " a0=0x" << std::hex << errorCode
+                          << " ra=0x" << getRegU32(ctx, 31)
+                          << " pc=0x" << ctx->pc
+                          << std::dec;
+                if (!errorStr.empty() && errorStr != "<unknown>") {
+                    std::cerr << " msg=\"" << errorStr << "\"";
+                }
+                std::cerr << std::endl;
+
+                // Return 0 — skip the display vtable call that would crash
+                setReturnU32(ctx, 0);
+                ctx->pc = getRegU32(ctx, 31);  // return to caller
+            };
+            runtime.registerFunction(0x129580, safeAbort);
+            std::cerr << "[SW3] Hooked FUN_00129580 (abort handler)" << std::endl;
         }
 
         std::cerr << "[SW3] All overrides registered. Bulk allocator patch applied." << std::endl;
