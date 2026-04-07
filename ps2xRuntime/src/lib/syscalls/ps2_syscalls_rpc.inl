@@ -152,6 +152,12 @@ void SifBindRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 
     if (!serverPtr)
     {
+        if (rpcId == 0x6) {
+            std::cerr << "[SifBindRpc] FORCING BIND FAIL FOR SID 6!" << std::endl;
+            setReturnS32(ctx, -1);
+            return;
+        }
+
         // Allocate a dummy server so bind loops can proceed.
         serverPtr = rpcAllocServerAddr(rdram);
         if (serverPtr)
@@ -324,6 +330,28 @@ void SifCallRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         g_rpc_clients[clientPtr].busy = true;
         g_rpc_clients[clientPtr].last_rpc = rpcNum;
         uint32_t sid = g_rpc_clients[clientPtr].sid;
+        if (sid == 0x40) {
+            if (rpcNum == 1) {
+                // "Search" / "Open" file!
+                char path[256] = {0};
+                for(int i=0; i<255; i++) {
+                    path[i] = rdram[sendBuf + i];
+                    if (!path[i]) break;
+                }
+                std::cerr << "[CDVD:SID40:1] Open: " << path << std::endl;
+                if (recvBuf && recvSize >= 4) {
+                    uint32_t fd = 0;
+                    if (strstr(path, ".HSH")) fd = 1;
+                    else if (strstr(path, ".PK2")) fd = 2;
+                    else fd = 3;
+                    
+                    std::memcpy(getMemPtr(rdram, recvBuf), &fd, 4);
+                    std::cerr << "[CDVD:SID40:1] Returned FD: " << fd << std::endl;
+                }
+                setReturnS32(ctx, 0); // success
+                return;
+            }
+        }
         if (sid)
         {
             auto it = g_rpc_servers.find(sid);

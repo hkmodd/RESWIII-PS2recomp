@@ -13,7 +13,7 @@ namespace
     {
         if (static_cast<uint64_t>(offset) + static_cast<uint64_t>(bytes) > static_cast<uint64_t>(regionSize))
         {
-            throw std::runtime_error(std::string(op) + " out-of-bounds at address: 0x" + std::to_string(address));
+            throw std::runtime_error(std::string(op) + " out-of-bounds at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
         }
     }
 
@@ -196,7 +196,7 @@ bool PS2Memory::initialize(size_t ramSize)
 
         // Initialize GS registers
         memset(&gs_regs, 0, sizeof(gs_regs));
-        // GS CSR: bit 0 = SIGNAL, bit 1 = FINISH — set both to "idle/done"
+        // GS CSR: bit 0 = SIGNAL, bit 1 = FINISH â€” set both to "idle/done"
         // so any polling loop that reads GS CSR will see completion immediately.
         gs_regs.csr = 0x0002u; // FINISH set
         // PMODE: enable circuit 1 by default (bit 0)
@@ -367,7 +367,7 @@ uint16_t PS2Memory::read16(uint32_t address)
 {
     if (address & 1)
     {
-        throw std::runtime_error("Unaligned 16-bit read at address: 0x" + std::to_string(address));
+        throw std::runtime_error("Unaligned 16-bit read at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
     }
 
     const bool scratch = isScratchpad(address);
@@ -396,7 +396,7 @@ uint32_t PS2Memory::read32(uint32_t address)
 {
     if (address & 3)
     {
-        throw std::runtime_error("Unaligned 32-bit read at address: 0x" + std::to_string(address));
+        throw std::runtime_error("Unaligned 32-bit read at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
     }
 
     if (isGsPrivReg(address))
@@ -436,7 +436,7 @@ uint64_t PS2Memory::read64(uint32_t address)
 {
     if (address & 7)
     {
-        throw std::runtime_error("Unaligned 64-bit read at address: 0x" + std::to_string(address));
+        throw std::runtime_error("Unaligned 64-bit read at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
     }
 
     if (isGsPrivReg(address))
@@ -472,7 +472,7 @@ __m128i PS2Memory::read128(uint32_t address)
 {
     if (address & 15)
     {
-        throw std::runtime_error("Unaligned 128-bit read at address: 0x" + std::to_string(address));
+        throw std::runtime_error("Unaligned 128-bit read at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
     }
 
     const bool scratch = isScratchpad(address);
@@ -524,7 +524,7 @@ void PS2Memory::write16(uint32_t address, uint16_t value)
     if ((address & 0x0FFFFFFF) == 0x9a0b8c) std::cerr << "[MEM] write16 to 9a0b8c!\n";
     if (address & 1)
     {
-        throw std::runtime_error("Unaligned 16-bit write at address: 0x" + std::to_string(address));
+        throw std::runtime_error("Unaligned 16-bit write at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
     }
 
     const bool scratch = isScratchpad(address);
@@ -558,7 +558,7 @@ void PS2Memory::write32(uint32_t address, uint32_t value)
     }
     if (address & 3)
     {
-        throw std::runtime_error("Unaligned 32-bit write at address: 0x" + std::to_string(address));
+        throw std::runtime_error("Unaligned 32-bit write at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
     }
 
     if (isGsPrivReg(address))
@@ -620,7 +620,7 @@ void PS2Memory::write64(uint32_t address, uint64_t value)
     }
     if (address & 7)
     {
-        throw std::runtime_error("Unaligned 64-bit write at address: 0x" + std::to_string(address));
+        throw std::runtime_error("Unaligned 64-bit write at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
     }
 
     if (isGsPrivReg(address))
@@ -672,7 +672,7 @@ void PS2Memory::write128(uint32_t address, __m128i value)
 
     if (address & 15)
     {
-        throw std::runtime_error("Unaligned 128-bit write at address: 0x" + std::to_string(address));
+        throw std::runtime_error("Unaligned 128-bit write at address: 0x" + (([address](){char buf[128];snprintf(buf,128,"%08X",address);return std::string(buf);})()));
     }
 
     const bool scratch = isScratchpad(address);
@@ -1380,7 +1380,7 @@ uint32_t PS2Memory::readIORegister(uint32_t address)
         }
     }
 
-    // ── Hardware timer / GS status registers ──
+    // â”€â”€ Hardware timer / GS status registers â”€â”€
     // The recompiled game polls these in tight loops waiting for
     // completion flags that never get set in a stub environment.
     // Return "operation finished" values so the loops exit immediately.
@@ -1392,19 +1392,19 @@ uint32_t PS2Memory::readIORegister(uint32_t address)
     case 0x10000810u: // T0_MODE
     case 0x10001010u: // T0_COUNT (alias area)
     case 0x10000800u: // T0_COUNT
-    case 0x10001810u: // T1_MODE  ← the critical one causing the infinite loop
+    case 0x10001810u: // T1_MODE  â† the critical one causing the infinite loop
     case 0x10001800u: // T1_COUNT
     case 0x10002810u: // T2_MODE (if used)
     case 0x10003810u: // T3_MODE (if used)
-        return 0x0300u; // Tof + Teq both set → any poll on these bits exits
+        return 0x0300u; // Tof + Teq both set â†’ any poll on these bits exits
 
     // GS CSR (privileged, but some games access it via IO aliases)
-    // bit 1 = SIGNAL, bit 2 = FINISH — both "done".
+    // bit 1 = SIGNAL, bit 2 = FINISH â€” both "done".
     case 0x10001000u: // GS_PMODE equivalent in IO space
         return 0x0001u; // enable circuit 1
 
     case 0x10001400u: // GS_SMODE2 equivalent in IO space
-        return 0x0000u; // interlace=0 (progressive) — safe default
+        return 0x0000u; // interlace=0 (progressive) â€” safe default
 
     default:
         break;
@@ -1566,3 +1566,4 @@ void PS2Memory::clearModifiedFlag(uint32_t address, uint32_t size)
         }
     }
 }
+

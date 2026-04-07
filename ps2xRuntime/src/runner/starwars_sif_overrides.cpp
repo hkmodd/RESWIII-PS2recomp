@@ -222,7 +222,7 @@ namespace
 
             // Fix for custom SIF RPC sid=6 (deadlock / main thread crash)
             // It uses statically allocated clientPtr = 0x9a3c20 or 0x9a3d40
-            if (clientPtr == 0x9a3c20 || clientPtr == 0x9a3d40) {
+            if (clientPtr == 0x9a3c20 || clientPtr == 0x9a3d40 || sid == 0x40) {
                 uint32_t sp = getRegU32(ctx, 29);
                 // SN Systems ABI for >4 args uses t0-t3 for args 5-8, and stack starts at sp+32 for arg 9
                 uint32_t recvBuf = getRegU32(ctx, 9);   // t1
