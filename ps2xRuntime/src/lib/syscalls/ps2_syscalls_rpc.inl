@@ -330,6 +330,53 @@ void SifCallRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         g_rpc_clients[clientPtr].busy = true;
         g_rpc_clients[clientPtr].last_rpc = rpcNum;
         uint32_t sid = g_rpc_clients[clientPtr].sid;
+        // [DIAG] Dump SID=0x3 (CDVD file RPC) sendBuf to understand the parameter format.
+        // SID=0x3 is sceCdSearchFile/sceCdRead — the game's primary file I/O path.
+        if (sid == 0x3) {
+            static int sid3_logs = 0;
+            if (sid3_logs < 20) {
+                std::cerr << "[CDVD:SID3] rpcNum=" << rpcNum
+                          << " sendBuf=0x" << std::hex << sendBuf
+                          << " sendSize=0x" << sendSize
+                          << " recvBuf=0x" << std::hex << recvBuf
+                          << " recvSize=0x" << recvSize
+                          << std::dec << std::endl;
+                // Dump first 64 bytes of sendBuf as hex
+                if (sendBuf && sendSize > 0) {
+                    uint32_t dumpLen = (sendSize < 64u) ? sendSize : 64u;
+                    std::cerr << "[CDVD:SID3] sendBuf hex: ";
+                    for (uint32_t i = 0; i < dumpLen; i++) {
+                        char hex[4];
+                        snprintf(hex, sizeof(hex), "%02x ", (uint8_t)rdram[sendBuf + i]);
+                        std::cerr << hex;
+                    }
+                    std::cerr << std::endl;
+                    // Try to read as string (CDVD paths are often null-terminated)
+                    char path[256] = {0};
+                    for (uint32_t i = 0; i < ((sendSize < 255u) ? sendSize : 255u); i++) {
+                        uint8_t c = (uint8_t)rdram[sendBuf + i];
+                        if (c >= 0x20 && c < 0x7f) path[i] = (char)c;
+                        else if (c == 0) break;
+                        else path[i] = '.';
+                    }
+                    if (path[0]) {
+                        std::cerr << "[CDVD:SID3] path string: " << path << std::endl;
+                    }
+                    // Dump first 8 u32s for structured params
+                    if (dumpLen >= 4) {
+                        std::cerr << "[CDVD:SID3] u32s: ";
+                        for (uint32_t i = 0; i < dumpLen/4 && i < 8; i++) {
+                            uint32_t v = 0;
+                            for (int b = 0; b < 4; b++)
+                                v |= ((uint32_t)(uint8_t)rdram[sendBuf + i*4 + b]) << (b*8);
+                            std::cerr << "0x" << std::hex << v << " ";
+                        }
+                        std::cerr << std::dec << std::endl;
+                    }
+                }
+                sid3_logs++;
+            }
+        }
         if (sid == 0x40) {
             if (rpcNum == 1) {
                 // "Search" / "Open" file!

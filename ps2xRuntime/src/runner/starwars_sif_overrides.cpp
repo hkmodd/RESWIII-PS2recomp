@@ -171,8 +171,10 @@ namespace
                       << " endFunc=0x" << getRegU32(ctx, 11) << " / " << runtimePtr->memory().read32(sp + 0x1C)
                       << std::dec << std::endl;
 
-            // Check if this is the cdvdman client
-            if (clientPtr == 0x1B4DC0) {
+            // Check if this is the cdvdman client (SID=0x3 for file ops, SID=0x4 for init)
+            // WHY: SID=0x3 uses clientPtr=0x1B4E80, SID=0x4 uses clientPtr=0x1B4DC0.
+            // The old check only matched 0x1B4DC0, so file search/read via SID=0x3 was never handled.
+            if (sid == 0x3 || sid == 0x4) {
                 static bool cored_opened = false;
 
                 if (rpcNum == 0x0) { // sceCdOpen
