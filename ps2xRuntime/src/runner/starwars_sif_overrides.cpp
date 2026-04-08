@@ -5,6 +5,7 @@
 #include <chrono>
 #include <algorithm>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 
 namespace
@@ -132,10 +133,122 @@ namespace
             // FUN_0012e7c0(0x136aa5, *param_1) and FUN_0012e7c0(0x136abd, *param_2)
             // Skip these as they're just debug prints.
 
+            char* defaultDev = (char*)(rdram + 0x92a690);
+            if (defaultDev) {
+                std::strcpy(defaultDev, "cdrom");
+            }
+
             ctx->pc = getRegU32(ctx, 31); // return via ra
         };
         runtime.registerFunction(0x0012e810, overrideBulkAlloc);
 
+        // Custom CDVD overrides for StarWars file loading (replaces SID=6 calls)
+        static FILE* s_fake_cdvd_file = nullptr;
+        static uint32_t s_fake_file_size = 0;
+
+        // FUN_001e25a0 - Async Open
+        static auto hookCdvdOpen = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            uint32_t filenameAddr = getRegU32(ctx, 4); // a0
+            char* filename = (char*)(rdram + filenameAddr);
+            
+            std::string hostPath = "E:\\Programmi VARI\\PROGETTI\\RESWIII\\ISO extracted\\ENGINE\\";
+            
+            if (strstr(filename, "_0.PK2") || strstr(filename, "_0.pk2") || strstr(filename, "_0.Pk2")) {
+                hostPath += "PS2PAK_0.pk2";
+            } else if (strstr(filename, "_1.PK2") || strstr(filename, "_1.pk2") || strstr(filename, "_1.Pk2")) {
+                hostPath += "PS2PAK_1.pk2";
+            } else if (strstr(filename, "PS2P")) {
+                hostPath += "PS2PAK.HSH";
+            } else {
+                const char* base = strrchr(filename, '\\');
+                if (base) hostPath += (base + 1);
+                else hostPath += filename;
+            }
+
+            std::cerr << "[CDVD:HLE] fake open mapped to: " << hostPath << std::endl;
+            if (s_fake_cdvd_file) { fclose(s_fake_cdvd_file); }
+            s_fake_cdvd_file = fopen(hostPath.c_str(), "rb");
+            if (s_fake_cdvd_file) {
+                fseek(s_fake_cdvd_file, 0, SEEK_END);
+                s_fake_file_size = ftell(s_fake_cdvd_file);
+                fseek(s_fake_cdvd_file, 0, SEEK_SET);
+                setReturnS32(ctx, 1); // fake handle 1
+            } else {
+                std::cerr << "[CDVD:HLE] failed to open!" << std::endl;
+                setReturnS32(ctx, 0); // 0 = failed
+            }
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x001e25a0, hookCdvdOpen);
+
+        // FUN_001e3618 - Get file size
+        static auto hookCdvdGetSize = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            setReturnS32(ctx, s_fake_file_size);
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x001e3618, hookCdvdGetSize);
+
+        // FUN_001e2db8 - Read Sectors (a0=handle, a1=sectors, a2=buffer)
+        static auto hookCdvdReadSectors = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            uint32_t lsn = getRegU32(ctx, 4); // a0
+            uint32_t num_sectors = getRegU32(ctx, 5); // a1
+            uint32_t buffer_addr = getRegU32(ctx, 6); // a2
+            if (s_fake_cdvd_file) {
+                // Seek to the LSN, ASSUMING LSN is an offset in sectors?! Or a byte offset? Or is this file handle-based?
+                // Let's print lsn just in case!
+                std::cerr << "[CDVD:HLE] ReadSectors requested: handle/lsn=" << lsn 
+                          << ", sectors=" << num_sectors 
+                          << ", dst=" << std::hex << buffer_addr << std::dec << std::endl;
+                
+                size_t read_bytes = fread(rdram + buffer_addr, 1, num_sectors * 2048, s_fake_cdvd_file);
+                std::cerr << "[CDVD:HLE] Read " << read_bytes << " bytes." << std::endl;
+                
+                // Dump first 64 bytes
+                std::cerr << "[CDVD:HLE] Content preview: ";
+                for (int i = 0; i < 64 && i < read_bytes; i++) {
+                    char c = (char)rdram[buffer_addr + i];
+                    if (c >= 32 && c <= 126) std::cerr << c;
+                    else std::cerr << "\\x" << std::hex << (int)(uint8_t)c << std::dec;
+                }
+                std::cerr << std::endl;
+            }
+            setReturnS32(ctx, 1); // 1 = success for sceCdRead!
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x001e2db8, hookCdvdReadSectors);
+
+        // FUN_001e3358 - Poll Status
+        static auto hookCdvdPollStatus = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            setReturnS32(ctx, 1); // 1 = COMPLETED
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x001e3358, hookCdvdPollStatus);
+
+        // FUN_001e2968 - Close
+        static auto hookCdvdClose = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            if (s_fake_cdvd_file) {
+                fclose(s_fake_cdvd_file);
+                s_fake_cdvd_file = nullptr;
+            }
+            setReturnS32(ctx, 1); // success
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x001e2968, hookCdvdClose);
+
+
+
+
+        // Override 0x1f0398 (VFS Get Default Device)
+        static auto vfsGetDefaultDevice = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            uint32_t destAddr = getRegU32(ctx, 4); // a0
+            char* dest = (char*)(rdram + destAddr);
+            if (dest) {
+                std::strcpy(dest, "cdrom");
+                std::cerr << "[VFS Override] Forced default device to 'cdrom'\n";
+            }
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x001f0398, vfsGetDefaultDevice);
 
         // ────────────────────────────────────────────────────
         //  Existing overrides (unchanged)
@@ -146,6 +259,22 @@ namespace
             ctx->pc = getRegU32(ctx, 31); // return via ra
         };
         runtime.registerFunction(0x00113858, overrideSifInitNoop);
+
+        // sceSifAllocIopHeap (FUN_001186c0 / thunk_FUN_001186c0 at 0x12ec40)
+        // WHY: The game allocates persistent IOP buffers and aborts if it gets NULL.
+        // In our HLE runtime, no IOP exists — return a fake IOP-side address.
+        static uint32_t s_fake_iop_heap_ptr = 0x00100000;  // Start in IOP memory range
+        static auto overrideSifAllocIopHeap = [](uint8_t*, R5900Context* ctx, PS2Runtime*) {
+            uint32_t size = getRegU32(ctx, 4); // a0 = requested size
+            uint32_t result = s_fake_iop_heap_ptr;
+            s_fake_iop_heap_ptr += (size + 0x3F) & ~0x3Fu; // align to 64 bytes
+            std::cerr << "[HLE:SifAllocIopHeap] size=0x" << std::hex << size
+                      << " -> 0x" << result << std::dec << std::endl;
+            setReturnS32(ctx, result); // return fake IOP pointer
+            ctx->pc = getRegU32(ctx, 31); // return via ra
+        };
+        runtime.registerFunction(0x001186c0, overrideSifAllocIopHeap);
+        runtime.registerFunction(0x0012ec40, overrideSifAllocIopHeap); // thunk
 
         // sceSifCallRpc (0x114838)
         static auto overrideSifCallRpc = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
@@ -171,10 +300,31 @@ namespace
                       << " endFunc=0x" << getRegU32(ctx, 11) << " / " << runtimePtr->memory().read32(sp + 0x1C)
                       << std::dec << std::endl;
 
-            // Check if this is the cdvdman client (SID=0x3 for file ops, SID=0x4 for init)
-            // WHY: SID=0x3 uses clientPtr=0x1B4E80, SID=0x4 uses clientPtr=0x1B4DC0.
-            // The old check only matched 0x1B4DC0, so file search/read via SID=0x3 was never handled.
-            if (sid == 0x3 || sid == 0x4) {
+            // Dump a bit of sendBuf if present to help identify unknown RPCs
+            if (sendBuf) {
+                std::cerr << "          sendBuf data: ";
+                for (int i = 0; i < 64; ++i) {
+                    uint8_t b = runtimePtr->memory().read8(sendBuf + i);
+                    std::cerr << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                }
+                std::cerr << "\n          sendBuf ascii: \"";
+                for (int i = 0; i < 64; ++i) {
+                    char c = (char)runtimePtr->memory().read8(sendBuf + i);
+                    if (c >= 32 && c <= 126) std::cerr << c;
+                    else std::cerr << '.';
+                }
+                std::cerr << "\"\n";
+            }
+
+            char* defaultDev = (char*)(rdram + 0x92a690);
+            if (defaultDev) {
+                std::cerr << "[SifCallRpc Override] Default VFS device: \"" << defaultDev << "\"\n";
+            }
+
+            // Check if this is the cdvdman client
+            // WHY: SID=0x4 uses clientPtr=0x1B4DC0. SID=0x80000003 is IOP Heap (not CDVD).
+            // We match on clientPtr to avoid intercepting IOP heap calls.
+            if (clientPtr == 0x1B4DC0) {
                 static bool cored_opened = false;
 
                 if (rpcNum == 0x0) { // sceCdOpen
