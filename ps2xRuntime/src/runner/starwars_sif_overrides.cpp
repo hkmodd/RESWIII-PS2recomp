@@ -1060,6 +1060,87 @@ namespace
         }
 
         // ────────────────────────────────────────────────────
+        //  DIAG: Hook FUN_0012daf0 (factory caller wrapper)
+        //  Logs a0 (output pointer) BEFORE calling factory,
+        //  and the factory return v0 AFTER the call completes.
+        // ────────────────────────────────────────────────────
+        {
+            static PS2Runtime::RecompiledFunction s_orig_12daf0 = nullptr;
+            s_orig_12daf0 = runtime.lookupFunction(0x12daf0);
+            if (s_orig_12daf0) {
+                static auto wrap12daf0 = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                    static int s_callCount = 0;
+                    ++s_callCount;
+                    uint32_t a0_in = getRegU32(ctx, 4);  // output slot pointer
+                    uint32_t ra_in = getRegU32(ctx, 31); // return address
+
+                    if (s_callCount <= 20) {
+                        std::cerr << "[DIAG:12daf0] PRE call#" << s_callCount
+                                  << " a0(outSlot)=0x" << std::hex << a0_in
+                                  << " ra=0x" << ra_in
+                                  << std::dec << std::endl;
+                    }
+                    // Call the original function
+                    s_orig_12daf0(rdram, ctx, rt);
+                    // After return, v0 should contain the output pointer
+                    uint32_t v0_out = getRegU32(ctx, 2);
+                    // Also read what was written to the output slot
+                    uint32_t slotVal = rt->memory().read32(a0_in);
+                    if (s_callCount <= 20) {
+                        std::cerr << "[DIAG:12daf0] POST call#" << s_callCount
+                                  << " v0=0x" << std::hex << v0_out
+                                  << " *outSlot=0x" << slotVal
+                                  << std::dec << std::endl;
+                    }
+                };
+                runtime.registerFunction(0x12daf0, wrap12daf0);
+                std::cerr << "[SW3] Hooked FUN_0012daf0 (factory caller) for diagnostics" << std::endl;
+            }
+        }
+
+        // ────────────────────────────────────────────────────
+        //  DIAG: Hook FUN_00250d50 (singleton factory)
+        //  Logs what the factory receives and returns.
+        // ────────────────────────────────────────────────────
+        {
+            static PS2Runtime::RecompiledFunction s_orig_250d50 = nullptr;
+            s_orig_250d50 = runtime.lookupFunction(0x250d50);
+            if (s_orig_250d50) {
+                static auto wrap250d50 = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                    static int s_callCount = 0;
+                    ++s_callCount;
+                    uint32_t a0_in = getRegU32(ctx, 4);  // hash string ptr
+                    uint32_t gp = getRegU32(ctx, 28);
+
+                    if (s_callCount <= 20) {
+                        // Read the hash string
+                        char hashStr[64] = {0};
+                        for (int i = 0; i < 63; i++) {
+                            uint8_t c = rt->memory().read8(a0_in + i);
+                            if (c == 0) break;
+                            hashStr[i] = (char)c;
+                        }
+                        std::cerr << "[DIAG:250d50] PRE call#" << s_callCount
+                                  << " a0(hash)=0x" << std::hex << a0_in
+                                  << " str=\"" << hashStr << "\""
+                                  << " gp=0x" << gp
+                                  << std::dec << std::endl;
+                    }
+                    // Call the original factory
+                    s_orig_250d50(rdram, ctx, rt);
+                    uint32_t v0_out = getRegU32(ctx, 2);
+                    if (s_callCount <= 20) {
+                        std::cerr << "[DIAG:250d50] POST call#" << s_callCount
+                                  << " v0(singleton)=0x" << std::hex << v0_out
+                                  << std::dec << std::endl;
+                    }
+                };
+                runtime.registerFunction(0x250d50, wrap250d50);
+                std::cerr << "[SW3] Hooked FUN_00250d50 (singleton factory) for diagnostics" << std::endl;
+            }
+        }
+
+        // ────────────────────────────────────────────────────
         //  DIAG: Hook FUN_0024ff40 (component vtable iterator)
         //  This function iterates over an array of component objects and
         //  calls virtual methods. If any component's vtable has a NULL entry
