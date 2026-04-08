@@ -755,31 +755,59 @@ namespace
                     // BSS range: 0x1afa00 - 0xa9f580 (resets to zero on start).
                     // Area above game heap (0x1F00000) is safe & unused.
                     constexpr uint32_t SAFE_VTABLE = 0x1F00000;
-                    constexpr uint32_t VTABLE_SIZE = 0x120; // enough for all slots
+                    constexpr uint32_t VTABLE_SIZE = 0x120; // 288 bytes = 72 u32 entries
 
+                    // GOLDEN VTABLE: exact copy from PCSX2 memory at 0x9a0ab0 (72 words).
+                    // FUN_0067c890 only populates SOME slots; PCSX2 has the complete picture.
+                    static const uint32_t kGoldenVtable[72] = {
+                        0x00010000, 0x00000000, 0x20647453, 0x746e6928,  // +0x00: header
+                        0x616e7265, 0x0000296c, 0x00000000, 0x00000000,  // +0x10
+                        0x00000000, 0x00000000, 0x00000148, 0x00000000,  // +0x20
+                        0x00000001, 0x01fe0280, 0x0067df40, 0x0067df30,  // +0x30: first fn ptrs
+                        0x0067def0, 0x00000000, 0x003c6c50, 0x0067ddc0,  // +0x40
+                        0x0067dd10, 0x00129720, 0x0067d680, 0x0067d670,  // +0x50
+                        0x00129680, 0x00129580, 0x0067d5c0, 0x00000000,  // +0x60
+                        0x0067dd00, 0x0067dcf0, 0x0067d870, 0x0067d7b0,  // +0x70
+                        0x0067db60, 0x0067e050, 0x0067dfa0, 0x0067da00,  // +0x80: [+0x84]=0x67e050 (CRITICAL)
+                        0x0067d960, 0x0067dcc0, 0x0067dcb0, 0x0067d6f0,  // +0x90
+                        0x0067d6d0, 0x0067d790, 0x0067d7a0, 0x0067d780,  // +0xA0
+                        0x0067d750, 0x0067d710, 0x0067c880, 0x0067c870,  // +0xB0
+                        0x0067c860, 0x0067d770, 0x0067d760, 0x0067dce0,  // +0xC0
+                        0x0067dcd0, 0x0067d6b0, 0x0067d6a0, 0x00250d50,  // +0xD0: [+0xdc]=0x250d50
+                        0x00250d30, 0x00250c90, 0x00000000, 0x00250df0,  // +0xE0
+                        0x00250c10, 0x002508a0, 0x00000000, 0x00000000,  // +0xF0
+                        0x0067d5b0, 0x0067d5a0, 0x0067d560, 0x0067d550,  // +0x100
+                        0x00000000, 0xffffffff, 0x00000001, 0x001b0564,  // +0x110
+                    };
+
+                    // Write the golden vtable to the safe area
+                    for (uint32_t i = 0; i < 72; i++) {
+                        rt->memory().write32(SAFE_VTABLE + i * 4, kGoldenVtable[i]);
+                    }
+
+                    // Also overlay any non-zero values from the CRT init
+                    // (in case the recompiled CRT wrote different addresses)
                     uint32_t vtableBase = rt->memory().read32(0x1af860);
                     if (vtableBase && vtableBase >= 0x1afa00 && vtableBase < 0xa9f580) {
-                        // Vtable is in BSS — copy it out
                         for (uint32_t off = 0; off < VTABLE_SIZE; off += 4) {
                             uint32_t val = rt->memory().read32(vtableBase + off);
-                            rt->memory().write32(SAFE_VTABLE + off, val);
+                            if (val != 0) {
+                                rt->memory().write32(SAFE_VTABLE + off, val);
+                            }
                         }
-                        // Redirect the pointer to the safe copy
-                        rt->memory().write32(0x1af860, SAFE_VTABLE);
-
-                        uint32_t slotDc = rt->memory().read32(SAFE_VTABLE + 0xdc);
-                        uint32_t slot54 = rt->memory().read32(SAFE_VTABLE + 0x54);
-                        std::cerr << "[CRT] VTable RELOCATED from 0x" << std::hex << vtableBase
-                                  << " to 0x" << SAFE_VTABLE
-                                  << " [+0xdc]=0x" << slotDc
-                                  << " [+0x54]=0x" << slot54
-                                  << std::dec << std::endl;
-                    } else {
-                        uint32_t slotDc = vtableBase ? rt->memory().read32(vtableBase + 0xdc) : 0;
-                        std::cerr << "[CRT] VTable at 0x" << std::hex << vtableBase
-                                  << " [+0xdc]=0x" << slotDc
-                                  << std::dec << " (not in BSS, skipping relocation)" << std::endl;
                     }
+
+                    // Redirect the pointer to the safe copy
+                    rt->memory().write32(0x1af860, SAFE_VTABLE);
+
+                    uint32_t slotDc = rt->memory().read32(SAFE_VTABLE + 0xdc);
+                    uint32_t slot84 = rt->memory().read32(SAFE_VTABLE + 0x84);
+                    uint32_t slot54 = rt->memory().read32(SAFE_VTABLE + 0x54);
+                    std::cerr << "[CRT] VTable WRITTEN (golden+CRT overlay) at 0x" << std::hex << SAFE_VTABLE
+                              << " [+0x84]=0x" << slot84
+                              << " [+0xdc]=0x" << slotDc
+                              << " [+0x54]=0x" << slot54
+                              << std::dec << std::endl;
                 }
                 s_orig_main(rdram, ctx, rt);
             };
@@ -1092,6 +1120,34 @@ namespace
                 };
                 runtime.registerFunction(0x24ff40, wrapComponentIter);
                 std::cerr << "[SW3] Hooked FUN_0024ff40 (component vtable iterator)" << std::endl;
+            }
+        }
+
+        // ────────────────────────────────────────────────────
+        //  FIX: Dispatch 0x250050 (branch delay slot in FUN_0024ff40)
+        //  The recompiled FUN_0024ff40 has a switch dispatch that does NOT
+        //  include 0x250050 as a case (it's a delay slot of bnez at 0x25004c).
+        //  When the dispatcher arrives here, the default case re-executes
+        //  the function from bb_0 with stale registers → pc-zero crash.
+        //
+        //  Fix: execute the delay slot instruction (addiu s6,s6,4) manually,
+        //  then redirect to 0x250054 which IS in the switch case.
+        // ────────────────────────────────────────────────────
+        {
+            static PS2Runtime::RecompiledFunction s_orig_24ff40_fn = nullptr;
+            s_orig_24ff40_fn = runtime.lookupFunction(0x24ff40);
+            if (s_orig_24ff40_fn) {
+                static auto fixDelaySlot250050 = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                    // Execute the delay slot: addiu s6, s6, 4
+                    uint32_t s6 = getRegU32(ctx, 22);
+                    ctx->r[22] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(s6 + 4)));
+                    // Redirect to the next valid entry point
+                    ctx->pc = 0x250054;
+                    // Re-dispatch to the original function with the corrected PC
+                    s_orig_24ff40_fn(rdram, ctx, rt);
+                };
+                runtime.registerFunction(0x250050, fixDelaySlot250050);
+                std::cerr << "[SW3] Registered delay-slot fix for 0x250050 -> 0x250054" << std::endl;
             }
         }
 
