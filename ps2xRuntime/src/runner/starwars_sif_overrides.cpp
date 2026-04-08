@@ -7,6 +7,10 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <unordered_map>
+#include <vector>
+#include <string>
+#include <cctype>
 
 namespace
 {
@@ -153,6 +157,8 @@ namespace
             
             std::string hostPath = "E:\\Programmi VARI\\PROGETTI\\RESWIII\\ISO extracted\\ENGINE\\";
             
+            std::cerr << "[CDVD:HLE] hookCdvdOpen called with filename: '" << filename << "'" << std::endl;
+            
             if (strstr(filename, "_0.PK2") || strstr(filename, "_0.pk2") || strstr(filename, "_0.Pk2")) {
                 hostPath += "PS2PAK_0.pk2";
             } else if (strstr(filename, "_1.PK2") || strstr(filename, "_1.pk2") || strstr(filename, "_1.Pk2")) {
@@ -188,19 +194,17 @@ namespace
         };
         runtime.registerFunction(0x001e3618, hookCdvdGetSize);
 
-        // FUN_001e2db8 - Read Sectors (a0=handle, a1=sectors, a2=buffer)
+        // FUN_001e2db8 - Read file (a0=handle, a1=count_sectors, a2=buffer)
         static auto hookCdvdReadSectors = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
-            uint32_t lsn = getRegU32(ctx, 4); // a0
-            uint32_t num_sectors = getRegU32(ctx, 5); // a1
+            uint32_t handle = getRegU32(ctx, 4);      // a0
+            uint32_t count = getRegU32(ctx, 5);       // a1
             uint32_t buffer_addr = getRegU32(ctx, 6); // a2
             if (s_fake_cdvd_file) {
-                // Seek to the LSN, ASSUMING LSN is an offset in sectors?! Or a byte offset? Or is this file handle-based?
-                // Let's print lsn just in case!
-                std::cerr << "[CDVD:HLE] ReadSectors requested: handle/lsn=" << lsn 
-                          << ", sectors=" << num_sectors 
+                std::cerr << "[CDVD:HLE] Read requested: handle=" << handle 
+                          << ", sectors=" << count 
                           << ", dst=" << std::hex << buffer_addr << std::dec << std::endl;
                 
-                size_t read_bytes = fread(rdram + buffer_addr, 1, num_sectors * 2048, s_fake_cdvd_file);
+                size_t read_bytes = fread(rdram + buffer_addr, 1, count * 2048, s_fake_cdvd_file);
                 std::cerr << "[CDVD:HLE] Read " << read_bytes << " bytes." << std::endl;
                 
                 // Dump first 64 bytes
@@ -211,15 +215,17 @@ namespace
                     else std::cerr << "\\x" << std::hex << (int)(uint8_t)c << std::dec;
                 }
                 std::cerr << std::endl;
+                setReturnS32(ctx, count); // Return read sectors (crashed when returning 1)
+            } else {
+                setReturnS32(ctx, 0); // read failed
             }
-            setReturnS32(ctx, 1); // 1 = success for sceCdRead!
             ctx->pc = getRegU32(ctx, 31);
         };
         runtime.registerFunction(0x001e2db8, hookCdvdReadSectors);
 
         // FUN_001e3358 - Poll Status
         static auto hookCdvdPollStatus = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
-            setReturnS32(ctx, 1); // 1 = COMPLETED
+            setReturnS32(ctx, 3); // 3 = COMPLETED (success)
             ctx->pc = getRegU32(ctx, 31);
         };
         runtime.registerFunction(0x001e3358, hookCdvdPollStatus);
@@ -235,8 +241,254 @@ namespace
         };
         runtime.registerFunction(0x001e2968, hookCdvdClose);
 
+        // ────────────────────────────────────────────────────
+        //  FIX #CDVD-FS: HLE override for sceCdSearchFile (FUN_00100920)
+        //
+        //  WHY: The game's CDVD filesystem uses SID 0x80000597 via
+        //  sceSifCallRpc(0x1b0e80, 0, ...). Our SifCallRpc override only
+        //  handled clientPtr=0x1B4DC0 (SID 0x4) and 0x9a3c20/3d40 (SID 0x6).
+        //  The 0x80000597 calls fell through to the generic RPC handler which
+        //  returns success but writes NO data. This caused FUN_001f4d78 to
+        //  "succeed" SearchFile with an empty result, so FILELIST.DIR was never
+        //  loaded, leaving the level pointer null and rendering black frames.
+        //
+        //  FIX: Intercept FUN_00100920 BEFORE it calls sceSifCallRpc.
+        //  We look up the requested file in our extracted ISO directory and
+        //  return a fake LBA + real file size in the sceCdlFILE result struct.
+        // ────────────────────────────────────────────────────
+        struct CdFileEntry {
+            std::string hostPath;
+            uint32_t size;
+            uint32_t fakeLba;
+        };
+        static std::unordered_map<std::string, CdFileEntry> s_cdFileTable;
+        static uint32_t s_nextFakeLba = 1000; // start fake LBAs at sector 1000
 
+        // Build the file lookup table from extracted ISO files
+        {
+            const std::string isoRoot = "E:\\Programmi VARI\\PROGETTI\\RESWIII\\ISO extracted\\";
+            struct { const char* cdPath; const char* hostFile; } fileMap[] = {
+                { "\\FILELIST.DIR",            "FILELIST.DIR" },
+                { "\\ENGINE\\PS2PAK.HSH",      "ENGINE\\ps2pak.hsh" },
+                { "\\ENGINE\\PS2PAK_0.PK2",    "ENGINE\\ps2pak_0.pk2" },
+                { "\\ENGINE\\PS2PAK_1.PK2",    "ENGINE\\ps2pak_1.pk2" },
+                // The game searches for truncated names with ;1
+                { "\\ENGINE\\_0.PK2;1",        "ENGINE\\ps2pak_0.pk2" },
+                { "\\ENGINE\\_1.PK2;1",        "ENGINE\\ps2pak_1.pk2" },
+                { "\\ENGINE\\PS2PAK.HSH;1",    "ENGINE\\ps2pak.hsh" },
+                { "\\FILELIST.DIR;1",          "FILELIST.DIR" },
+                { "\\ENGINE\\LEGALENG.PSI",     "ENGINE\\legaleng.psi" },
+                { "\\ENGINE\\LEGALFRE.PSI",     "ENGINE\\LegalFre.psi" },
+                { "\\ENGINE\\LEGALGER.PSI",     "ENGINE\\LegalGer.psi" },
+                { "\\ENGINE\\LEGALITA.PSI",     "ENGINE\\LegalIta.psi" },
+                { "\\ENGINE\\LEGALSPA.PSI",     "ENGINE\\LegalSpa.psi" },
+                { "\\ENGINE\\LEGALDUT.PSI",     "ENGINE\\LegalDut.psi" },
+                { "\\ENGINE\\LEGALPOR.PSI",     "ENGINE\\LegalPor.psi" },
+                { "\\ENGINE\\LEGALJAP.PSI",     "ENGINE\\LegalJap.psi" },
+            };
+            for (auto& entry : fileMap) {
+                std::string fullPath = isoRoot + entry.hostFile;
+                FILE* f = fopen(fullPath.c_str(), "rb");
+                uint32_t sz = 0;
+                if (f) {
+                    fseek(f, 0, SEEK_END);
+                    sz = (uint32_t)ftell(f);
+                    fclose(f);
+                }
+                // Normalize: convert to uppercase for matching
+                std::string key = entry.cdPath;
+                for (auto& c : key) c = toupper((unsigned char)c);
+                s_cdFileTable[key] = { fullPath, sz, s_nextFakeLba };
+                s_nextFakeLba += (sz + 2047) / 2048 + 1; // advance by file size in sectors
+                std::cerr << "[CDVD:FS] Registered: " << key << " -> " << fullPath 
+                          << " (" << sz << " bytes, LBA=" << (s_nextFakeLba - (sz + 2047) / 2048 - 1) << ")" << std::endl;
+            }
+        }
 
+        // Map from fake LBA -> host file entry for streaming reads
+        static auto findFileByLba = [](uint32_t lba) -> CdFileEntry* {
+            for (auto& [key, entry] : s_cdFileTable) {
+                if (entry.fakeLba == lba) return &entry;
+            }
+            return nullptr;
+        };
+
+        // Track the last SearchFile result for streaming reads
+        static CdFileEntry* s_lastSearchedFile = nullptr;
+
+        // FUN_00100920: sceCdSearchFile(result_struct*, filename, disk_type)
+        // Returns: 1=found, 0=not found
+        // result_struct is sceCdlFILE: { uint32_t lsn, uint32_t size, char name[32], uint8_t date[8] }
+        static auto hookCdSearchFile = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            uint32_t resultAddr = getRegU32(ctx, 4);   // a0 = result struct
+            uint32_t filenameAddr = getRegU32(ctx, 5); // a1 = filename
+            // a2 = disk_type (ignored)
+
+            char filename[256] = {0};
+            for (int i = 0; i < 255; i++) {
+                filename[i] = (char)rdram[filenameAddr + i];
+                if (filename[i] == 0) break;
+            }
+
+            // Normalize to uppercase
+            std::string key = filename;
+            for (auto& c : key) c = toupper((unsigned char)c);
+
+            uint32_t ra = getRegU32(ctx, 31);
+            std::cerr << "[CDVD:SearchFile] Looking up: \"" << key << "\" (caller RA: 0x" << std::hex << ra << std::dec << ")" << std::endl;
+
+            auto it = s_cdFileTable.find(key);
+            if (it != s_cdFileTable.end()) {
+                CdFileEntry& entry = it->second;
+                s_lastSearchedFile = &entry;
+
+                // Write sceCdlFILE struct to result
+                // Offset 0: LSN (uint32)
+                runtimePtr->memory().write32(resultAddr + 0, entry.fakeLba);
+                // Offset 4: file size (uint32)
+                runtimePtr->memory().write32(resultAddr + 4, entry.size);
+                // Offset 8-23: filename (16 bytes, zero-padded)
+                for (int i = 0; i < 16; i++) {
+                    uint8_t c = (i < (int)key.size()) ? (uint8_t)key[i] : 0;
+                    runtimePtr->memory().write8(resultAddr + 8 + i, c);
+                }
+                // Offset 24-31: date (8 bytes, zeroed)
+                for (int i = 0; i < 8; i++) {
+                    runtimePtr->memory().write8(resultAddr + 24 + i, 0);
+                }
+
+                std::cerr << "[CDVD:SearchFile] FOUND: LBA=" << entry.fakeLba
+                          << " size=" << entry.size << " path=" << entry.hostPath << std::endl;
+
+                // Signal the CDVD semaphore (DAT_001304a8, value at 0x1304a8)
+                uint32_t semaId = runtimePtr->memory().read32(0x1304a8);
+                if (semaId != 0) {
+                    __m128i old_a0 = ctx->r[4];
+                    ctx->r[4] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(semaId)));
+                    ps2_syscalls::iSignalSema(rdram, ctx, runtimePtr);
+                    ctx->r[4] = old_a0;
+                }
+
+                setReturnS32(ctx, 1); // 1 = found
+            } else {
+                std::cerr << "[CDVD:SearchFile] NOT FOUND: " << key << std::endl;
+                s_lastSearchedFile = nullptr;
+                setReturnS32(ctx, 0); // 0 = not found
+            }
+
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x00100920, hookCdSearchFile);
+
+        // ────────────────────────────────────────────────────
+        //  FIX #CDVD-ST: HLE override for sceCdStRead (FUN_00101870)
+        //
+        //  WHY: The streaming read uses SID 0x80000595 via
+        //  sceSifCallRpc(0x131650, 1, 1, ...) which was not handled.
+        //  The RPC fell through and never delivered any data.
+        //
+        //  FIX: Intercept FUN_00101870. Read the file data from host FS
+        //  directly into guest memory. Set completion flags so the polling
+        //  loop (FUN_00100e60) sees the read as complete.
+        //
+        //  Params: a0=LSN, a1=num_sectors, a2=dest_buffer, a3=mode_struct
+        // ────────────────────────────────────────────────────
+        static auto hookCdStRead = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            uint32_t lsn = getRegU32(ctx, 4);          // a0 = LSN (from SearchFile)
+            uint32_t numSectors = getRegU32(ctx, 5);   // a1 = number of sectors
+            uint32_t destBuf = getRegU32(ctx, 6);      // a2 = destination buffer address
+            uint32_t modeAddr = getRegU32(ctx, 7);     // a3 = pointer to mode struct
+
+            // Read mode byte [2] to determine sector size
+            uint8_t secType = (modeAddr) ? runtimePtr->memory().read8(modeAddr + 2) : 0;
+            uint32_t sectorSize;
+            switch (secType) {
+                case 1: sectorSize = 0x918; break;  // CD-ROM mode 1: 2328 bytes 
+                case 2: sectorSize = 0x924; break;  // CD-ROM mode 2: 2340 bytes
+                default: sectorSize = 2048; break;  // DVD: 2048 bytes
+            }
+
+            uint32_t totalBytes = numSectors * sectorSize;
+
+            std::cerr << "[CDVD:StRead] LSN=" << lsn << " sectors=" << numSectors
+                      << " dest=0x" << std::hex << destBuf << std::dec
+                      << " secType=" << (int)secType << " sectorSize=" << sectorSize
+                      << " total=" << totalBytes << std::endl;
+
+            // Find the file by LBA (from previous SearchFile)
+            CdFileEntry* entry = findFileByLba(lsn);
+            if (!entry && s_lastSearchedFile) {
+                // Fallback: use the last searched file
+                entry = s_lastSearchedFile;
+                std::cerr << "[CDVD:StRead] LBA mismatch, using last searched: " << entry->hostPath << std::endl;
+            }
+
+            if (entry) {
+                FILE* f = fopen(entry->hostPath.c_str(), "rb");
+                if (f) {
+                    // Read up to totalBytes (but no more than file size)
+                    uint32_t readSize = std::min(totalBytes, entry->size);
+                    
+                    // Zero the buffer first
+                    for (uint32_t i = 0; i < totalBytes; i++) {
+                        runtimePtr->memory().write8(destBuf + i, 0);
+                    }
+                    
+                    // Read file content
+                    std::vector<uint8_t> buf(readSize);
+                    size_t bytesRead = fread(buf.data(), 1, readSize, f);
+                    fclose(f);
+
+                    // Copy into guest memory
+                    for (size_t i = 0; i < bytesRead; i++) {
+                        runtimePtr->memory().write8(destBuf + (uint32_t)i, buf[i]);
+                    }
+
+                    std::cerr << "[CDVD:StRead] Read " << bytesRead << "/" << readSize 
+                              << " bytes from " << entry->hostPath << std::endl;
+
+                    // Dump first 64 bytes for debugging
+                    std::cerr << "[CDVD:StRead] Preview: ";
+                    for (size_t i = 0; i < 64 && i < bytesRead; i++) {
+                        char c = (char)buf[i];
+                        if (c >= 32 && c <= 126) std::cerr << c;
+                        else std::cerr << "\\x" << std::hex << (int)(uint8_t)c << std::dec;
+                    }
+                    std::cerr << std::endl;
+                } else {
+                    std::cerr << "[CDVD:StRead] ERROR: Could not open " << entry->hostPath << std::endl;
+                }
+            } else {
+                std::cerr << "[CDVD:StRead] ERROR: No file mapping for LBA " << lsn << std::endl;
+            }
+
+            // Signal completion: clear the streaming-pending flags
+            runtimePtr->memory().write32(0x1304b4, 0); // DAT_001304b4 = 0 (not busy)
+            runtimePtr->memory().write32(0x1304d8, 0); // DAT_001304d8 = 0 (not pending)
+
+            // Signal the CDVD semaphore
+            uint32_t semaId = runtimePtr->memory().read32(0x1304a8);
+            if (semaId != 0) {
+                __m128i old_a0 = ctx->r[4];
+                ctx->r[4] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(semaId)));
+                ps2_syscalls::iSignalSema(rdram, ctx, runtimePtr);
+                ctx->r[4] = old_a0;
+            }
+
+            setReturnS32(ctx, 1); // 1 = success
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x00101870, hookCdStRead);
+
+        // ────────────────────────────────────────────────────
+        //  FIX #CDVD-INIT: HLE override for sceCdStInit (FUN_001eb5f0)
+        //  Just return success — no real IOP streaming module to init.
+        static auto hookCdStInit = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
+            std::cerr << "[CDVD:StInit] Stub — returning success" << std::endl;
+            setReturnS32(ctx, 1);
+            ctx->pc = getRegU32(ctx, 31);
+        };
+        runtime.registerFunction(0x001eb5f0, hookCdStInit);
 
         // Override 0x1f0398 (VFS Get Default Device)
         static auto vfsGetDefaultDevice = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtimePtr) {
@@ -354,11 +606,11 @@ namespace
                 }
                 else if (rpcNum == 0x4) { // Read / GetStat
                     std::cerr << "[CDVD:Read] sendBuf=0x" << std::hex << sendBuf << std::dec << std::endl;
-                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 1);
+                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 0);
                 }
                 else {
                     std::cerr << "[CDVD:RPC] rpcNum=0x" << std::hex << rpcNum << std::dec << std::endl;
-                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 1);
+                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 0);
                 }
 
                 // Signal CDVD semaphore
@@ -777,6 +1029,70 @@ namespace
             };
             runtime.registerFunction(0x129580, safeAbort);
             std::cerr << "[SW3] Hooked FUN_00129580 (abort handler)" << std::endl;
+        }
+
+        // ────────────────────────────────────────────────────
+        //  DIAG: Hook FUN_0024ff40 (component vtable iterator)
+        //  This function iterates over an array of component objects and
+        //  calls virtual methods. If any component's vtable has a NULL entry
+        //  at +0x70, the jalr t9 crashes (pc-zero).
+        //  We wrap it to log the component array state before executing.
+        // ────────────────────────────────────────────────────
+        {
+            static PS2Runtime::RecompiledFunction s_orig_24ff40 = nullptr;
+            s_orig_24ff40 = runtime.lookupFunction(0x24ff40);
+            if (s_orig_24ff40) {
+                static auto wrapComponentIter = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                    static int s_callCount = 0;
+                    ++s_callCount;
+                    // a0 = this pointer (s5 in the assembly = param_1)
+                    uint32_t thisPtr = getRegU32(ctx, 4);
+                    // a1 = param_2 (s4/target)
+                    // a2 = param_3 (s3/filter)
+                    if (thisPtr && s_callCount <= 20) {
+                        // Read component count at +0x14 and component array ptr at +0x18
+                        uint32_t compCount = rt->memory().read32(thisPtr + 0x14);
+                        uint32_t compArray = rt->memory().read32(thisPtr + 0x18);
+                        // Read vtable ptr at +0x0 of this object
+                        uint32_t objVtable = rt->memory().read32(thisPtr);
+                        // Read the row-count method at +0x50 (used to determine iteration count)
+                        uint32_t vtSlot50 = objVtable ? rt->memory().read32(objVtable + 0x50) : 0;
+                        // Read the short at +0x6 to check the branch at 0x24ff80
+                        uint16_t flag6 = rt->memory().read16(thisPtr + 6);
+
+                        std::cerr << "[DIAG:24ff40] call#" << s_callCount
+                                  << " this=0x" << std::hex << thisPtr
+                                  << " vtable=0x" << objVtable
+                                  << " +0x50=0x" << vtSlot50
+                                  << " flag6=" << std::dec << flag6
+                                  << " compCount=" << compCount
+                                  << " compArray=0x" << std::hex << compArray
+                                  << std::dec << std::endl;
+
+                        // Dump each component's vtable pointers
+                        for (uint32_t i = 0; i < compCount && i < 8; i++) {
+                            uint32_t compPtrSlot = compArray + i * 4;
+                            uint32_t compPtr = rt->memory().read32(compPtrSlot);
+                            if (compPtr) {
+                                uint32_t compVtable = rt->memory().read32(compPtr);
+                                uint32_t vt70 = compVtable ? rt->memory().read32(compVtable + 0x70) : 0xDEAD0070;
+                                uint32_t vt10 = compVtable ? rt->memory().read32(compVtable + 0x10) : 0xDEAD0010;
+                                std::cerr << "  comp[" << i << "] ptr=0x" << std::hex << compPtr
+                                          << " vtable=0x" << compVtable
+                                          << " +0x70=0x" << vt70
+                                          << " +0x10=0x" << vt10
+                                          << std::dec << std::endl;
+                            } else {
+                                std::cerr << "  comp[" << i << "] ptr=NULL!" << std::endl;
+                            }
+                        }
+                    }
+                    // Call the original function
+                    s_orig_24ff40(rdram, ctx, rt);
+                };
+                runtime.registerFunction(0x24ff40, wrapComponentIter);
+                std::cerr << "[SW3] Hooked FUN_0024ff40 (component vtable iterator)" << std::endl;
+            }
         }
 
         std::cerr << "[SW3] All overrides registered. Bulk allocator patch applied." << std::endl;
