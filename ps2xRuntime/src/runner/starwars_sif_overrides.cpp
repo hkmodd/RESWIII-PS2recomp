@@ -1467,6 +1467,42 @@ namespace
         }
 
         // ────────────────────────────────────────────────────
+        //  FIX: FULL OVERRIDE of FUN_0075a100 — SIF RPC audio transfer
+        //
+        //  This function manages SIF RPC transfers to the IOP for
+        //  audio (SPU2). It has TWO internal stall loops:
+        //    bb_8  (0x75a180): do {} while (*(gp-0x6ca4) == 1)
+        //    bb_16→17 cycle: sceSifCallRpc → sceSifCheckStatRpc loop
+        //
+        //  Without a real IOP, BOTH loops spin forever.
+        //  Clearing the flag before calling original doesn't help
+        //  because the function re-enters the SIF RPC call cycle.
+        //
+        //  Fix: SKIP the entire function. Return v0=0 (success).
+        //  Audio will be silent but the engine will proceed.
+        // ────────────────────────────────────────────────────
+        {
+            static auto stub_sif_audio = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                // v0 = 0 (success / no error)
+                ctx->r[2] = _mm_set_epi64x(0, 0);
+                // Return to caller
+                ctx->pc = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[31], 0));
+
+                static int s_logCount = 0;
+                if (s_logCount++ < 5) {
+                    std::cerr << "[SW3] FUN_0075a100 FULL OVERRIDE → return 0 (audio SIF skip)"
+                              << std::endl;
+                }
+            };
+            runtime.registerFunction(0x75a100, stub_sif_audio);
+            std::cerr << "[SW3] FULL OVERRIDE FUN_0075a100 (SIF RPC audio) → skip + return 0." << std::endl;
+
+            // Also override the thunk entry at 0x75a5a0 with same stub
+            runtime.registerFunction(0x75a5a0, stub_sif_audio);
+            std::cerr << "[SW3] FULL OVERRIDE thunk 0x75a5a0 → same stub." << std::endl;
+        }
+
+        // ────────────────────────────────────────────────────
         //  FIX: Dispatch 0x250050 (branch delay slot in FUN_0024ff40)
         //  The recompiled FUN_0024ff40 has a switch dispatch that does NOT
         //  include 0x250050 as a case (it's a delay slot of bnez at 0x25004c).
@@ -1492,6 +1528,78 @@ namespace
                 runtime.registerFunction(0x250050, fixDelaySlot250050);
                 std::cerr << "[SW3] Registered delay-slot fix for 0x250050 -> 0x250054" << std::endl;
             }
+        }
+
+
+        // ────────────────────────────────────────────────────
+        //  FIX: Override FUN_00114a28 — sceSifCheckStatRpc
+        //
+        //  This function checks if a SIF RPC transfer is in progress:
+        //    - returns 1 if busy (transfer still running)
+        //    - returns 0 if done (transfer complete)
+        //
+        //  Without a real IOP, the busy flag is never cleared.
+        //  The caller at 0x75a21c keeps looping on a "busy" result.
+        //
+        //  Fix: Always return 0 ("transfer complete").
+        //  This also breaks the gp-0x6ca4 busy-wait at 0x75a180
+        //  since the function flow no longer hangs.
+        // ────────────────────────────────────────────────────
+        {
+            static auto stub_sceSifCheckStatRpc = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                // v0 = 0 (transfer complete)
+                ctx->r[2] = _mm_set_epi64x(0, 0);
+                // Return to caller
+                ctx->pc = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[31], 0));
+
+                static int s_logCount = 0;
+                if (s_logCount++ < 3) {
+                    std::cerr << "[SW3] sceSifCheckStatRpc(0x114a28) → 0 (always done)" << std::endl;
+                }
+            };
+            runtime.registerFunction(0x114a28, stub_sceSifCheckStatRpc);
+            std::cerr << "[SW3] Overrode FUN_00114a28 (sceSifCheckStatRpc) → always 0." << std::endl;
+        }
+
+        // ────────────────────────────────────────────────────
+        //  FIX: FULL OVERRIDE of FUN_003c6c10 + FUN_003c6bd0
+        //  (Resource Manager memory allocators)
+        //
+        //  These functions take a0 = size_bytes and return v0 = pointer.
+        //  Internally they traverse pool chains via 0x3c6030 (82-block search)
+        //  and eventually call printf/debug logging.  Without a fully
+        //  initialized pool manager the search chain stalls forever.
+        //
+        //  Fix: bypass the entire chain, use guestMalloc directly.
+        // ────────────────────────────────────────────────────
+        {
+            static auto stub_resMgrAlloc = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                uint32_t size = getRegU32(ctx, 4);  // a0 = requested size
+                if (size == 0) size = 16;            // minimum allocation
+                uint32_t ptr = rt->guestMalloc(size, 16);
+                setReturnS32(ctx, (int32_t)ptr);  // v0 = allocated pointer (or 0)
+
+                static int s_logCount = 0;
+                s_logCount++;
+                if (s_logCount <= 50 || (s_logCount % 500) == 0) {
+                    std::cerr << "[SW3] resMgrAlloc #" << s_logCount
+                              << ": size=0x" << std::hex << size
+                              << " -> ptr=0x" << ptr
+                              << " ra=0x" << getRegU32(ctx, 31)
+                              << std::dec << std::endl;
+                }
+                if (s_logCount == 10000) {
+                    std::cerr << "[SW3] WARNING: resMgrAlloc called 10000 times! Possible infinite loop!" << std::endl;
+                }
+
+                // Return to caller
+                ctx->pc = getRegU32(ctx, 31);
+            };
+            runtime.registerFunction(0x3c6c10, stub_resMgrAlloc);
+            std::cerr << "[SW3] FULL OVERRIDE FUN_003c6c10 (resMgr alloc) → guestMalloc." << std::endl;
+
+            runtime.registerFunction(0x3c6bd0, stub_resMgrAlloc);
+            std::cerr << "[SW3] FULL OVERRIDE FUN_003c6bd0 (resMgr alloc variant) → guestMalloc." << std::endl;
         }
 
         std::cerr << "[SW3] All overrides registered. Bulk allocator patch applied." << std::endl;
