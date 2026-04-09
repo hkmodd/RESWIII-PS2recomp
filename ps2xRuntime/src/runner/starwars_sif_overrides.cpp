@@ -22,7 +22,6 @@ namespace
         // ────────────────────────────────────────────────────
         //  PRELOAD COREC.BIN AND CORED.BIN
         // ────────────────────────────────────────────────────
-        /*
         {
             auto loadModule = [&](const std::string& name, uint32_t addr) {
                 auto path = PS2Runtime::getIoPaths().elfDirectory / name;
@@ -42,10 +41,18 @@ namespace
                 }
             };
             
+            // Standard loading
             loadModule("corec.bin", 0x001c2680);
             loadModule("cored.bin", 0x009bc400);
+
+            // GHOST MAPPINGS for unrelocated memory accesses
+            // The static recompiler left `lui v1, 0xa7` for corec.bin which compiles to 0xA70000.
+            // 0xA70000 corresponds to a base address of 0x5C2680.
+            loadModule("corec.bin", 0x005c2680);
+            
+            // Assuming cored.bin static base is also offset by exactly 0x400000...
+            loadModule("cored.bin", 0x009bc400 + 0x400000);
         }
-        */
         // ────────────────────────────────────────────────────
         //  FIX #1: Bulk asset-buffer allocator (FUN_0012e810)
         //
@@ -736,11 +743,22 @@ namespace
         s_orig_main = runtime.lookupFunction(0x00129d40);
 
         if (s_orig_main) {
-            static auto wrapMain = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
-                static bool s_main_entered = false;
-                if (!s_main_entered) {
-                    s_main_entered = true;
-                    std::cerr << "[CRT] Entering main — initializing Metrowerks vtable (FUN_0067c890)..." << std::endl;
+              static auto wrapMain = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                  static bool s_main_entered = false;
+                  if (!s_main_entered) {
+                      s_main_entered = true;
+                      std::cerr << "[CRT] Entering main â€” initializing Metrowerks vtable (FUN_0067c890)..." << std::endl;
+
+                      // FIX: The static recompiler missed MWo3 relocations for corec.bin
+                      // It hardcoded jump table addresses like 0xA76400. We patch the specific table here.
+                      uint32_t jmptab[] = {
+                          0x67f9e0, 0x67f9f0, 0x67fa10, 0x67fa20, 0x67fa40, 
+                          0x67fa00, 0x67fa30, 0x67fa70, 0x67fa50, 0x67fa60
+                      };
+                      for(int i=0; i<10; i++) {
+                          rt->memory().write32(0xa76400 + i*4, jmptab[i]);
+                      }
+
 
                     // Call the CRT vtable initializer NOW, after BSS clear.
                     // This populates all 50+ function pointer slots in the vtable at 0x9a0ab0.
@@ -753,8 +771,8 @@ namespace
 
                     // Copy the vtable to a safe area outside BSS
                     // BSS range: 0x1afa00 - 0xa9f580 (resets to zero on start).
-                    // Area above game heap (0x1F00000) is safe & unused.
-                    constexpr uint32_t SAFE_VTABLE = 0x1F00000;
+                    // The kernel memory area (0x10000) is safe & unused by the game.
+                    constexpr uint32_t SAFE_VTABLE = 0x00010000;
                     constexpr uint32_t VTABLE_SIZE = 0x120; // 288 bytes = 72 u32 entries
 
                     // GOLDEN VTABLE: exact copy from PCSX2 memory at 0x9a0ab0 (72 words).
@@ -1060,6 +1078,242 @@ namespace
         }
 
         // ────────────────────────────────────────────────────
+        //  FIX FUN_0067f9b0 (broken jump table block execution)
+        // ────────────────────────────────────────────────────
+        {
+            auto wrap_67f9b0 = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                auto setRegU32 = [](R5900Context* c, int reg, uint32_t val) {
+                    c->r[reg] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(val)));
+                };
+                auto setRegU64 = [](R5900Context* c, int reg, uint64_t val) {
+                    c->r[reg] = _mm_set_epi64x(val >> 32, val & 0xFFFFFFFF);
+                };
+                auto getRegU64 = [](R5900Context* c, int reg) -> uint64_t {
+                    return static_cast<uint64_t>(_mm_extract_epi64(c->r[reg], 0));
+                };
+
+                // Prologue
+                uint32_t sp = getRegU32(ctx, 29) - 0x20;
+                setRegU32(ctx, 29, sp);
+                uint32_t a0 = getRegU32(ctx, 4);
+                
+                // Delay slot of the condition branch (beq at, zero, 0x67FA80)
+                rt->memory().write64(sp, getRegU64(ctx, 31));
+
+                if (a0 >= 10) {
+                    // bb_2: 0x67FA80
+                    setRegU32(ctx, 4, sp + 0x1c);
+                    setRegU32(ctx, 31, 0x67fa90);
+                    setRegU32(ctx, 5, 0xa765ad);
+                    ctx->pc = 0x12dab0;
+                    return;
+                } else {
+                    uint32_t jmptab[10] = {0x67f9e0, 0x67f9f0, 0x67fa10, 0x67fa20, 0x67fa40, 
+                                           0x67fa00, 0x67fa30, 0x67fa70, 0x67fa50, 0x67fa60};
+                    uint32_t target_addr = jmptab[a0];
+                    
+                    uint32_t jump_instr = rt->memory().read32(target_addr + 8);
+                    uint32_t offset = jump_instr & 0xFFFF;
+                    
+                    setRegU32(ctx, 2, 0xa70000 + offset); // v0
+
+                    // Epilogue (0x67FAB8)
+                    uint64_t ra = rt->memory().read64(sp);
+                    setRegU64(ctx, 31, ra);
+                    setRegU32(ctx, 29, sp + 0x20);
+                    
+                    ctx->pc = (uint32_t)ra;
+                    return;
+                }
+            };
+            runtime.registerFunction(0x67f9b0, wrap_67f9b0);
+            std::cerr << "[SW3] Hooked FUN_0067f9b0 (broken switch) to un-break loop." << std::endl;
+        }
+
+        // ────────────────────────────────────────────────────
+        //  FIX: Generic MIPS micro-thunk interpreter
+        //
+        //  The game binary contains hundreds of tiny vtable accessor
+        //  functions that are just: jr ra; <delay-slot-instr>
+        //  The static recompiler never emitted code for them, so
+        //  when a vtable call dispatches to one of these addresses,
+        //  lookupFunction fails → defaultFunction → pc-zero → dead thread.
+        //
+        //  Solution: scan guest memory for the pattern 0x03E00008 (jr ra)
+        //  and register a generic interpreter that:
+        //  1. Reads the delay-slot instruction (pc + 4)
+        //  2. Interprets it (addiu, lw, move, ori, etc.)
+        //  3. Sets pc = ra to return
+        // ────────────────────────────────────────────────────
+        {
+            // The thunk interpreter lambda: reads and executes one delay-slot instruction
+            static auto thunkInterpreter = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                uint32_t pc = ctx->pc;
+                uint32_t instr = rt->memory().read32(pc + 4); // delay slot
+
+                uint8_t  op    = (instr >> 26) & 0x3F;
+                uint8_t  rs    = (instr >> 21) & 0x1F;
+                uint8_t  rt_f  = (instr >> 16) & 0x1F;
+                uint8_t  rd    = (instr >> 11) & 0x1F;
+                uint8_t  sa    = (instr >>  6) & 0x1F;
+                uint8_t  func  = instr & 0x3F;
+                int16_t  imm   = static_cast<int16_t>(instr & 0xFFFF);
+                uint16_t uimm  = instr & 0xFFFF;
+
+                auto getReg = [](R5900Context* c, int r) -> uint32_t {
+                    return static_cast<uint32_t>(_mm_extract_epi32(c->r[r], 0));
+                };
+                auto setReg = [](R5900Context* c, int r, uint32_t val) {
+                    if (r == 0) return; // $zero is immutable
+                    c->r[r] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(val)));
+                };
+
+                switch (op) {
+                    case 0x00: { // SPECIAL
+                        switch (func) {
+                            case 0x21: // addu rd, rs, rt
+                                setReg(ctx, rd, getReg(ctx, rs) + getReg(ctx, rt_f));
+                                break;
+                            case 0x25: // or rd, rs, rt  (also: move rd, rs when rt=0)
+                                setReg(ctx, rd, getReg(ctx, rs) | getReg(ctx, rt_f));
+                                break;
+                            case 0x2D: // daddu rd, rs, rt (treat as addu for 32-bit)
+                                setReg(ctx, rd, getReg(ctx, rs) + getReg(ctx, rt_f));
+                                break;
+                            case 0x00: // sll rd, rt, sa (nop when rd=rt=sa=0)
+                                setReg(ctx, rd, getReg(ctx, rt_f) << sa);
+                                break;
+                            case 0x02: // srl rd, rt, sa
+                                setReg(ctx, rd, getReg(ctx, rt_f) >> sa);
+                                break;
+                            case 0x03: // sra rd, rt, sa
+                                setReg(ctx, rd, static_cast<uint32_t>(static_cast<int32_t>(getReg(ctx, rt_f)) >> sa));
+                                break;
+                            case 0x23: // subu rd, rs, rt
+                                setReg(ctx, rd, getReg(ctx, rs) - getReg(ctx, rt_f));
+                                break;
+                            case 0x24: // and rd, rs, rt
+                                setReg(ctx, rd, getReg(ctx, rs) & getReg(ctx, rt_f));
+                                break;
+                            case 0x27: // nor rd, rs, rt
+                                setReg(ctx, rd, ~(getReg(ctx, rs) | getReg(ctx, rt_f)));
+                                break;
+                            case 0x2A: // slt rd, rs, rt
+                                setReg(ctx, rd, (static_cast<int32_t>(getReg(ctx, rs)) < static_cast<int32_t>(getReg(ctx, rt_f))) ? 1 : 0);
+                                break;
+                            case 0x2B: // sltu rd, rs, rt
+                                setReg(ctx, rd, (getReg(ctx, rs) < getReg(ctx, rt_f)) ? 1 : 0);
+                                break;
+                            default:
+                                // Unknown SPECIAL — just nop it and log
+                                static int s_unknownSpecial = 0;
+                                if (s_unknownSpecial++ < 10)
+                                    std::cerr << "[thunk:unknown-special] pc=0x" << std::hex << pc
+                                              << " func=0x" << (int)func << std::dec << std::endl;
+                                break;
+                        }
+                        break;
+                    }
+                    case 0x09: // addiu rt, rs, imm
+                        setReg(ctx, rt_f, getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)));
+                        break;
+                    case 0x0D: // ori rt, rs, uimm
+                        setReg(ctx, rt_f, getReg(ctx, rs) | uimm);
+                        break;
+                    case 0x0C: // andi rt, rs, uimm
+                        setReg(ctx, rt_f, getReg(ctx, rs) & uimm);
+                        break;
+                    case 0x0F: // lui rt, imm
+                        setReg(ctx, rt_f, static_cast<uint32_t>(uimm) << 16);
+                        break;
+                    case 0x23: // lw rt, offset(rs)
+                        setReg(ctx, rt_f, rt->memory().read32(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm))));
+                        break;
+                    case 0x21: // lh rt, offset(rs)
+                        setReg(ctx, rt_f, static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(rt->memory().read16(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)))))));
+                        break;
+                    case 0x25: // lhu rt, offset(rs)
+                        setReg(ctx, rt_f, static_cast<uint32_t>(rt->memory().read16(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)))));
+                        break;
+                    case 0x20: // lb rt, offset(rs)
+                        setReg(ctx, rt_f, static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(rt->memory().read8(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)))))));
+                        break;
+                    case 0x24: // lbu rt, offset(rs)
+                        setReg(ctx, rt_f, static_cast<uint32_t>(rt->memory().read8(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)))));
+                        break;
+                    case 0x2B: // sw rt, offset(rs)
+                        rt->memory().write32(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)), getReg(ctx, rt_f));
+                        break;
+                    case 0x29: // sh rt, offset(rs)
+                        rt->memory().write16(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)), static_cast<uint16_t>(getReg(ctx, rt_f)));
+                        break;
+                    case 0x28: // sb rt, offset(rs)
+                        rt->memory().write8(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)), static_cast<uint8_t>(getReg(ctx, rt_f)));
+                        break;
+                    case 0x0A: // slti rt, rs, imm
+                        setReg(ctx, rt_f, (static_cast<int32_t>(getReg(ctx, rs)) < static_cast<int32_t>(imm)) ? 1 : 0);
+                        break;
+                    case 0x0B: // sltiu rt, rs, imm
+                        setReg(ctx, rt_f, (getReg(ctx, rs) < static_cast<uint32_t>(static_cast<int32_t>(imm))) ? 1 : 0);
+                        break;
+                    default:
+                        if (instr != 0x00000000) { // not a nop
+                            static int s_unknownOp = 0;
+                            if (s_unknownOp++ < 10)
+                                std::cerr << "[thunk:unknown-op] pc=0x" << std::hex << pc
+                                          << " op=0x" << (int)op << " instr=0x" << instr
+                                          << std::dec << std::endl;
+                        }
+                        break;
+                }
+
+                // Return via ra
+                ctx->pc = getReg(ctx, 31);
+            };
+
+            // Scan guest memory for jr-ra thunk patterns and register them
+            // jr ra = 0x03E00008
+            constexpr uint32_t JR_RA = 0x03E00008;
+            int thunkCount = 0;
+
+            // Scan the entire code section for jr-ra thunks
+            // We look for addresses where:
+            //   [addr+0] = jr ra (0x03E00008)
+            //   [addr+4] = some delay-slot instruction
+            //   This is NOT inside a larger function (addr is 16-byte aligned for vtable thunks,
+            //   or at minimum the instruction before is padding/nop)
+            for (uint32_t addr = 0x100000; addr < 0xA00000; addr += 4) {
+                uint32_t w0 = runtime.memory().read32(addr);
+                if (w0 != JR_RA) continue;
+
+                // Check if this is the START of a tiny function, not a jr ra in the middle of one.
+                // Heuristic: the previous instruction (addr-4) is either:
+                //   - a nop (0x00000000)
+                //   - another jr ra epilogue's padding
+                //   - addr is 16-byte aligned (vtable thunk)
+                // AND the function is NOT already registered
+                bool isThunkStart = false;
+
+                if ((addr & 0xF) == 0) {
+                    // 16-byte aligned — likely vtable thunk
+                    isThunkStart = true;
+                } else if (addr >= 4) {
+                    uint32_t prev = runtime.memory().read32(addr - 4);
+                    if (prev == 0x00000000) { // preceded by nop/padding
+                        isThunkStart = true;
+                    }
+                }
+
+                if (isThunkStart && !runtime.hasFunction(addr)) {
+                    runtime.registerFunction(addr, thunkInterpreter);
+                    ++thunkCount;
+                }
+            }
+
+            std::cerr << "[SW3] Registered " << thunkCount << " MIPS thunk interpreters (jr-ra + delay-slot)." << std::endl;
+        }
+
+        // ────────────────────────────────────────────────────
         //  DIAG: Hook FUN_0012daf0 (factory caller wrapper)
         //  Logs a0 (output pointer) BEFORE calling factory,
         //  and the factory return v0 AFTER the call completes.
@@ -1086,10 +1340,18 @@ namespace
                     uint32_t v0_out = getRegU32(ctx, 2);
                     // Also read what was written to the output slot
                     uint32_t slotVal = rt->memory().read32(a0_in);
+                    
+                    uint32_t gp = getRegU32(ctx, 28);
+                    uint32_t vtableBase = rt->memory().read32(gp - 0x7c90);
+                    uint32_t vtableEntry = rt->memory().read32(vtableBase + 0xdc);
+
                     if (s_callCount <= 20) {
                         std::cerr << "[DIAG:12daf0] POST call#" << s_callCount
                                   << " v0=0x" << std::hex << v0_out
                                   << " *outSlot=0x" << slotVal
+                                  << " gp=0x" << gp
+                                  << " vtableBase=0x" << vtableBase
+                                  << " vtable[0xdc]=0x" << vtableEntry
                                   << std::dec << std::endl;
                     }
                 };

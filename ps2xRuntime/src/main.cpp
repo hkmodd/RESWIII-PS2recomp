@@ -21,6 +21,10 @@ std::string normalizeGameId(const std::string& folderName)
     size_t dot = result.find('.');
     if (dot != std::string::npos)
         result.erase(dot, 1);
+        
+    for (char& c : result) {
+        c = std::toupper(c);
+    }
 
     return result;
 }

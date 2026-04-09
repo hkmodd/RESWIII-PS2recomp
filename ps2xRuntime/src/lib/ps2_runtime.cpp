@@ -1095,6 +1095,104 @@ PS2Runtime::RecompiledFunction PS2Runtime::lookupFunction(uint32_t address)
         return rangeResult;
     }
 
+    // ────────────────────────────────────────────────────
+    //  JR-RA thunk auto-detection
+    //
+    //  Many overlay functions (corec.bin, cored.bin) are tiny
+    //  vtable accessors: just `jr ra` + one delay-slot instruction.
+    //  The static recompiler never generated code for them.
+    //  Detect them here at dispatch time and interpret inline.
+    // ────────────────────────────────────────────────────
+    {
+        constexpr uint32_t JR_RA_OPCODE = 0x03E00008u;
+        uint32_t instrAtPc = 0u;
+        try { instrAtPc = m_memory.read32(address); } catch (...) {}
+
+        if (instrAtPc == JR_RA_OPCODE)
+        {
+            // This IS a jr-ra thunk. Build an interpreter for it.
+            // We capture the delay-slot address via ctx->pc at call time.
+            static RecompiledFunction thunkInterpreter = [](uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt) {
+                const uint32_t pc = ctx->pc;
+                uint32_t delayInstr = 0u;
+                try { delayInstr = rt->memory().read32(pc + 4u); } catch (...) {}
+
+                // Decode fields
+                const uint8_t  op    = (delayInstr >> 26) & 0x3F;
+                const uint8_t  rs    = (delayInstr >> 21) & 0x1F;
+                const uint8_t  rt_f  = (delayInstr >> 16) & 0x1F;
+                const uint8_t  rd    = (delayInstr >> 11) & 0x1F;
+                const uint8_t  sa    = (delayInstr >>  6) & 0x1F;
+                const uint8_t  func  = delayInstr & 0x3F;
+                const int16_t  imm   = static_cast<int16_t>(delayInstr & 0xFFFF);
+                const uint16_t uimm  = delayInstr & 0xFFFF;
+
+                auto getReg = [](R5900Context *c, int r) -> uint32_t {
+                    return static_cast<uint32_t>(_mm_extract_epi32(c->r[r], 0));
+                };
+                auto setReg = [](R5900Context *c, int r, uint32_t val) {
+                    if (r == 0) return;
+                    c->r[r] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(val)));
+                };
+
+                // Execute the delay-slot instruction
+                switch (op) {
+                    case 0x00: { // SPECIAL
+                        switch (func) {
+                            case 0x00: setReg(ctx, rd, getReg(ctx, rt_f) << sa); break; // sll
+                            case 0x02: setReg(ctx, rd, getReg(ctx, rt_f) >> sa); break; // srl
+                            case 0x03: setReg(ctx, rd, static_cast<uint32_t>(static_cast<int32_t>(getReg(ctx, rt_f)) >> sa)); break; // sra
+                            case 0x21: setReg(ctx, rd, getReg(ctx, rs) + getReg(ctx, rt_f)); break; // addu
+                            case 0x23: setReg(ctx, rd, getReg(ctx, rs) - getReg(ctx, rt_f)); break; // subu
+                            case 0x24: setReg(ctx, rd, getReg(ctx, rs) & getReg(ctx, rt_f)); break; // and
+                            case 0x25: setReg(ctx, rd, getReg(ctx, rs) | getReg(ctx, rt_f)); break; // or / move
+                            case 0x26: setReg(ctx, rd, getReg(ctx, rs) ^ getReg(ctx, rt_f)); break; // xor
+                            case 0x27: setReg(ctx, rd, ~(getReg(ctx, rs) | getReg(ctx, rt_f))); break; // nor
+                            case 0x2A: setReg(ctx, rd, (static_cast<int32_t>(getReg(ctx, rs)) < static_cast<int32_t>(getReg(ctx, rt_f))) ? 1u : 0u); break; // slt
+                            case 0x2B: setReg(ctx, rd, (getReg(ctx, rs) < getReg(ctx, rt_f)) ? 1u : 0u); break; // sltu
+                            case 0x2D: setReg(ctx, rd, getReg(ctx, rs) + getReg(ctx, rt_f)); break; // daddu (32-bit)
+                            default: break; // nop or unknown — safe to skip
+                        }
+                        break;
+                    }
+                    case 0x09: setReg(ctx, rt_f, getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm))); break; // addiu
+                    case 0x0A: setReg(ctx, rt_f, (static_cast<int32_t>(getReg(ctx, rs)) < static_cast<int32_t>(imm)) ? 1u : 0u); break; // slti
+                    case 0x0B: setReg(ctx, rt_f, (getReg(ctx, rs) < static_cast<uint32_t>(static_cast<int32_t>(imm))) ? 1u : 0u); break; // sltiu
+                    case 0x0C: setReg(ctx, rt_f, getReg(ctx, rs) & uimm); break; // andi
+                    case 0x0D: setReg(ctx, rt_f, getReg(ctx, rs) | uimm); break; // ori
+                    case 0x0E: setReg(ctx, rt_f, getReg(ctx, rs) ^ uimm); break; // xori
+                    case 0x0F: setReg(ctx, rt_f, static_cast<uint32_t>(uimm) << 16); break; // lui
+                    case 0x20: setReg(ctx, rt_f, static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(rt->memory().read8(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm))))))); break; // lb
+                    case 0x21: setReg(ctx, rt_f, static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(rt->memory().read16(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm))))))); break; // lh
+                    case 0x23: setReg(ctx, rt_f, rt->memory().read32(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)))); break; // lw
+                    case 0x24: setReg(ctx, rt_f, static_cast<uint32_t>(rt->memory().read8(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm))))); break; // lbu
+                    case 0x25: setReg(ctx, rt_f, static_cast<uint32_t>(rt->memory().read16(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm))))); break; // lhu
+                    case 0x28: rt->memory().write8(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)), static_cast<uint8_t>(getReg(ctx, rt_f))); break; // sb
+                    case 0x29: rt->memory().write16(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)), static_cast<uint16_t>(getReg(ctx, rt_f))); break; // sh
+                    case 0x2B: rt->memory().write32(getReg(ctx, rs) + static_cast<uint32_t>(static_cast<int32_t>(imm)), getReg(ctx, rt_f)); break; // sw
+                    default: break; // unknown — act as nop, still return via ra
+                }
+
+                // Return: pc = ra
+                ctx->pc = getReg(ctx, 31);
+            };
+
+            // Register it so future calls are fast O(1) lookup
+            registerFunction(address, thunkInterpreter);
+
+            static int s_thunkAutoCount = 0;
+            if (s_thunkAutoCount++ < 50)
+            {
+                uint32_t delaySlot = 0u;
+                try { delaySlot = m_memory.read32(address + 4u); } catch (...) {}
+                std::cerr << "[thunk:auto] Registered jr-ra thunk at 0x" << std::hex << address
+                          << " delay=0x" << delaySlot << std::dec << std::endl;
+            }
+
+            return thunkInterpreter;
+        }
+    }
+
     std::cerr << "Warning: Function at address 0x" << std::hex << address << std::dec << " not found (range lookup also failed)" << std::endl;
 
     static RecompiledFunction defaultFunction = [](uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
