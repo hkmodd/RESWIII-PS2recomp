@@ -1602,6 +1602,159 @@ namespace
             std::cerr << "[SW3] FULL OVERRIDE FUN_003c6bd0 (resMgr alloc variant) → guestMalloc." << std::endl;
         }
 
+        // ────────────────────────────────────────────────────
+        // DIAGNOSTIC OVERRIDE: 0x6599f0
+        // The runtime keeps getting stuck at PC 0x6599f0.
+        // We override it manually to trace.
+        // ────────────────────────────────────────────────────
+        {
+            static auto stub_0x6599f0 = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                static int hits = 0;
+                if (++hits <= 10) {
+                    std::cerr << "[SW3] Reached 0x6599f0 override! Hit #" << hits << std::endl;
+                }
+                
+                auto setRegLocal = [](R5900Context* c, int r, uint32_t v) {
+                    if (r != 0) c->r[r] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(v)));
+                };
+
+                // Replicate bb_1 logic:
+                // move a0, v0
+                setRegLocal(ctx, 4, getRegU32(ctx, 2));
+                // a1 = 0x65BD00
+                setRegLocal(ctx, 5, 0x65BD00);
+                // a2 = 0x65BCB0
+                setRegLocal(ctx, 6, 0x65BCB0);
+                // t0 = s0
+                setRegLocal(ctx, 8, getRegU32(ctx, 16));
+                // v1 = 0xbe3
+                setRegLocal(ctx, 3, 0xbe3);
+                // a3 = 0x24
+                setRegLocal(ctx, 7, 0x24);
+                
+                // jal 0x0012fe80
+                setRegLocal(ctx, 31, 0x659a10);
+                ctx->pc = 0x12fe80;
+            };
+            runtime.registerFunction(0x6599f0, stub_0x6599f0);
+            std::cerr << "[SW3] DIAGNOSTIC OVERRIDE for 0x6599f0 registered." << std::endl;
+        }
+        // ────────────────────────────────────────────────────
+        //  FUN_0072e5d0 — Resource Manager constructor
+        //
+        //  This is a massive 99-bb function that initializes the entire
+        //  resource manager subsystem including multiple sub-allocations.
+        //  The recompiled C++ uses a giant switch for re-entry dispatch,
+        //  but the switch has a "default: break → fall-through to bb_0"
+        //  that causes infinite re-dispatch when returning from sub-calls.
+        //
+        //  Fix: bypass the entire constructor, allocate + zero-fill
+        //  the critical sub-structures, and return param_1.
+        // ────────────────────────────────────────────────────
+        {
+            static auto stub_resMgrCtor = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                uint32_t param1 = getRegU32(ctx, 4);  // a0 = this ptr
+                uint32_t param2 = getRegU32(ctx, 5);  // a1
+                uint32_t param3 = getRegU32(ctx, 6);  // a2
+
+                // Allocate 0xc8-byte sub-structure (piVar1 in Ghidra)
+                uint32_t subStruct1 = rt->guestMalloc(0xc8, 16);
+                if (subStruct1) {
+                    // Zero-fill
+                    uint32_t phys = subStruct1 & 0x1FFFFFFu;
+                    if (phys + 0xc8 <= 0x2000000u)
+                        std::memset(rdram + phys, 0, 0xc8);
+                }
+
+                // Allocate 0xc98-byte sub-structure (for FUN_0067fc50 init)
+                uint32_t subStruct2 = rt->guestMalloc(0xc98, 16);
+                if (subStruct2) {
+                    uint32_t phys = subStruct2 & 0x1FFFFFFu;
+                    if (phys + 0xc98 <= 0x2000000u)
+                        std::memset(rdram + phys, 0, 0xc98);
+                }
+
+                // Allocate 0x178-byte sub-structure (for FUN_0012daf0 calls)
+                uint32_t subStruct3 = rt->guestMalloc(0x178, 16);
+                if (subStruct3) {
+                    uint32_t phys = subStruct3 & 0x1FFFFFFu;
+                    if (phys + 0x178 <= 0x2000000u)
+                        std::memset(rdram + phys, 0, 0x178);
+                }
+
+                // Allocate 0x1b0-byte sub-structure (for FUN_0072f750 etc.)
+                uint32_t subStruct4 = rt->guestMalloc(0x1b0, 16);
+                if (subStruct4) {
+                    uint32_t phys = subStruct4 & 0x1FFFFFFu;
+                    if (phys + 0x1b0 <= 0x2000000u)
+                        std::memset(rdram + phys, 0, 0x1b0);
+                }
+
+                // Helper lambdas for direct RDRAM access
+                auto w32 = [rdram](uint32_t addr, uint32_t val) {
+                    uint32_t off = addr & PS2_RAM_MASK;
+                    std::memcpy(rdram + off, &val, 4);
+                };
+                auto r32 = [rdram](uint32_t addr) -> uint32_t {
+                    uint32_t off = addr & PS2_RAM_MASK;
+                    uint32_t val;
+                    std::memcpy(&val, rdram + off, 4);
+                    return val;
+                };
+                auto w8 = [rdram](uint32_t addr, uint8_t val) {
+                    rdram[addr & PS2_RAM_MASK] = val;
+                };
+
+                // Write critical pointers into param1 struct
+                w32(param1 + 0x00, 0x18f7b0);   // vtable → DAT_0018f7b0
+                w8(param1 + 0x04, 1);            // enabled byte
+                w32(param1 + 0x08, param2);      // param2
+                w32(param1 + 0x0c, param3);      // param3
+                w32(param1 + 0x60, 1);           // param1[0x18] = 1
+
+                // Store global pointer: piRam001b0bb4 = subStruct1
+                uint32_t gp = getRegU32(ctx, 28);
+                uint32_t globalAddr = gp + (uint32_t)0xffffffffffff96c4ULL; // gp - 0x693c
+                w32(globalAddr, subStruct1);
+
+                // Also: *(DAT_001af860 + 0x34) = subStruct1
+                uint32_t dat1af860 = r32(0x1af860);
+                if (dat1af860) {
+                    w32(dat1af860 + 0x34, subStruct1);
+                }
+
+                // subStruct1 linkage
+                if (subStruct1) {
+                    w32(subStruct1 + 0x34, param1);    // back-pointer to param1
+                    w32(subStruct1 + 0x20, subStruct2); // [8] = 0xc98 buffer
+                    w32(subStruct1 + 0x00, subStruct3); // [0] = 0x178 buffer
+                    w32(subStruct1 + 0x04, subStruct4); // [1] = 0x1b0 buffer
+                }
+
+                // Display defaults
+                w32(param1 + 0x48, 0x280);  // width = 640
+                w32(param1 + 0x4c, 0x1e0);  // height = 480
+
+                // Return param1 in v0
+                setReturnS32(ctx, (int32_t)param1);
+
+                static int s_logCount = 0;
+                if (s_logCount++ < 5) {
+                    std::cerr << "[SW3] resMgrCtor override: param1=0x" << std::hex << param1
+                              << " sub1=0x" << subStruct1
+                              << " sub2=0x" << subStruct2
+                              << " sub3=0x" << subStruct3
+                              << " sub4=0x" << subStruct4
+                              << std::dec << std::endl;
+                }
+
+                // Return to caller
+                ctx->pc = getRegU32(ctx, 31);
+            };
+            runtime.registerFunction(0x72e5d0, stub_resMgrCtor);
+            std::cerr << "[SW3] FULL OVERRIDE FUN_0072e5d0 (resMgr constructor)." << std::endl;
+        }
+
         std::cerr << "[SW3] All overrides registered. Bulk allocator patch applied." << std::endl;
         std::cerr << "[SW3] Heap config: base=0x" << std::hex
                   << runtime.guestHeapBase() << " limit=0x8000000"

@@ -1993,6 +1993,33 @@ void PS2Runtime::dispatchLoop(uint8_t *rdram, R5900Context *ctx)
             }
         }
 
+        // FOCUSED DIAGNOSTIC: trace ALL dispatches within FUN_0072e5d0 range
+        {
+            static int s_stuckDiag = 0;
+            static bool s_inStuckZone = false;
+            const uint32_t newPc = ctx->pc;
+            
+            // Start tracing once we first hit 0x72e6d4
+            if (dispatchedPc == 0x72e6d4u) s_inStuckZone = true;
+            
+            if (s_inStuckZone && s_stuckDiag < 200)
+            {
+                ++s_stuckDiag;
+                const uint32_t newRa = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[31], 0));
+                const uint32_t v0 = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[2], 0));
+                const uint32_t s0 = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[16], 0));
+                const uint32_t a0 = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[4], 0));
+                std::cerr << "[STUCK-TRACE] #" << s_stuckDiag
+                          << " pc=0x" << std::hex << dispatchedPc
+                          << " -> newPc=0x" << newPc
+                          << " ra=0x" << newRa
+                          << " v0=0x" << v0
+                          << " a0=0x" << a0
+                          << " s0=0x" << s0
+                          << std::dec << std::endl;
+            }
+        }
+
         if (ctx->pc == 0u)
         {
             const uint32_t ra = static_cast<uint32_t>(_mm_extract_epi32(ctx->r[31], 0));
