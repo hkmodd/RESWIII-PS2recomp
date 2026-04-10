@@ -31,6 +31,7 @@ std::string normalizeGameId(const std::string& folderName)
 
 int main(int argc, char* argv[])
 {
+    setvbuf(stdout, NULL, _IONBF, 0);
     if (argc < 2)
     {
         std::cout << "Usage: " << argv[0] << " <elf_file>" << std::endl;

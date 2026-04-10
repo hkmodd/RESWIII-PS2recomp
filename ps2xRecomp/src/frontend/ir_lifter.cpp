@@ -298,7 +298,7 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["vabs.xz"]      = &IRLifter::liftVU0_Generic;
     // VFTOI / VITOF
     dispatchTable_["vftoi0.xyzw"]  = &IRLifter::liftVU0_Generic;
-    dispatchTable_["_vftoi0.z"]    = &IRLifter::liftVU0_Generic;
+    dispatchTable_["vftoi0.z"]     = &IRLifter::liftVU0_Generic;
     dispatchTable_["vitof0.xy"]    = &IRLifter::liftVU0_Generic;
     dispatchTable_["vitof0.xyz"]   = &IRLifter::liftVU0_Generic;
     dispatchTable_["vitof0.xyzw"]  = &IRLifter::liftVU0_Generic;
@@ -422,7 +422,7 @@ void IRLifter::initDispatchTable() {
     dispatchTable_["vmulx.zw"]     = &IRLifter::liftVU0_Generic;
     dispatchTable_["vmuly.w"]      = &IRLifter::liftVU0_Generic;
     dispatchTable_["vmuly.x"]      = &IRLifter::liftVU0_Generic;
-    dispatchTable_["_vmuly.z"]     = &IRLifter::liftVU0_Generic;
+    dispatchTable_["vmuly.z"]      = &IRLifter::liftVU0_Generic;
     dispatchTable_["vmuly.xy"]     = &IRLifter::liftVU0_Generic;
     dispatchTable_["vmuly.xyzw"]   = &IRLifter::liftVU0_Generic;
     dispatchTable_["vmuly.xzw"]    = &IRLifter::liftVU0_Generic;

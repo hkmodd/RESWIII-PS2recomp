@@ -1937,6 +1937,8 @@ void PS2Runtime::dispatchLoop(uint8_t *rdram, R5900Context *ctx)
             if ((samePcCount % kSamePcYieldInterval) == 0u)
             {
                 std::cout << "CPU is doing some work at PC 0x" << std::hex << pc << ". PC not updating." << std::endl;
+                RecompiledFunction fn = lookupFunction(pc);
+                std::cout << "  -> fn ptr: " << (void*)fn << " | isRange: " << (fn == lookupFunctionByRange(pc) ? "yes" : "no") << std::endl;
                 std::this_thread::yield();
             }
         }

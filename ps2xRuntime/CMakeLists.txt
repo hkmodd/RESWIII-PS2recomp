@@ -95,3 +95,4 @@ install(TARGETS ps2_runtime
 install(DIRECTORY include/
     DESTINATION include
 )
+# force rebuild

@@ -1603,41 +1603,105 @@ namespace
         }
 
         // ────────────────────────────────────────────────────
-        // DIAGNOSTIC OVERRIDE: 0x6599f0
-        // The runtime keeps getting stuck at PC 0x6599f0.
-        // We override it manually to trace.
+        // OVERRIDE: 0x12fe80
+        // This function is an async wait loop used by the resource manager.
+        // It spins forever in a single-threaded emulated environment.
+        // Since we satisfy allocations synchronously, we can just bypass it.
         // ────────────────────────────────────────────────────
         {
-            static auto stub_0x6599f0 = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+            static auto stub_0x12fe80 = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
                 static int hits = 0;
-                if (++hits <= 10) {
-                    std::cerr << "[SW3] Reached 0x6599f0 override! Hit #" << hits << std::endl;
+                if (++hits <= 50) {
+                    std::cerr << "[SW3] Bypassed async spin-wait 0x12fe80 (#" << hits << ")" << std::endl;
                 }
                 
-                auto setRegLocal = [](R5900Context* c, int r, uint32_t v) {
-                    if (r != 0) c->r[r] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(v)));
-                };
-
-                // Replicate bb_1 logic:
-                // move a0, v0
-                setRegLocal(ctx, 4, getRegU32(ctx, 2));
-                // a1 = 0x65BD00
-                setRegLocal(ctx, 5, 0x65BD00);
-                // a2 = 0x65BCB0
-                setRegLocal(ctx, 6, 0x65BCB0);
-                // t0 = s0
-                setRegLocal(ctx, 8, getRegU32(ctx, 16));
-                // v1 = 0xbe3
-                setRegLocal(ctx, 3, 0xbe3);
-                // a3 = 0x24
-                setRegLocal(ctx, 7, 0x24);
+                // Keep v0 as whatever it was, or return a0 (the pointer).
+                // Actually, just returning the pointer or early-outing is fine.
+                // The caller expects v0 to be valid if it returns one.
+                uint32_t param_0 = getRegU32(ctx, 4); 
+                setReturnS32(ctx, (int32_t)param_0);
                 
-                // jal 0x0012fe80
-                setRegLocal(ctx, 31, 0x659a10);
-                ctx->pc = 0x12fe80;
+                ctx->pc = getRegU32(ctx, 31); // jr ra
             };
-            runtime.registerFunction(0x6599f0, stub_0x6599f0);
-            std::cerr << "[SW3] DIAGNOSTIC OVERRIDE for 0x6599f0 registered." << std::endl;
+            runtime.registerFunction(0x12fe80, stub_0x12fe80);
+            std::cerr << "[SW3] OVERRIDE 0x12fe80 (resMgr async wait) registered." << std::endl;
+        }
+
+        // ────────────────────────────────────────────────────
+        // DIAGNOSTIC + FIX: 0x6599f0 re-entry stall
+        //
+        // The dispatcher finds FUN_006599c0 via range lookup for PC=0x6599f0.
+        // The generated switch SHOULD hit case 0x6599f0 → bb_1, but instead
+        // falls through to default → bb_0, creating an infinite loop.
+        //
+        // Root cause unknown — possibly compiler optimization of the switch.
+        // Fix: register 0x6599f0 as an explicit override that manually
+        // executes bb_1's logic (prep args + call 0x12fe80) and bb_2's
+        // epilogue (store result, restore regs, jr ra).
+        //
+        // Since 0x12fe80 is already stubbed (returns a0 in v0), we can
+        // inline the entire bb_1 + stub + bb_2 sequence right here.
+        // ────────────────────────────────────────────────────
+        {
+            static auto fix_6599f0 = [](uint8_t* rdram, R5900Context* ctx, PS2Runtime* rt) {
+                // --- bb_1 logic (0x6599f0) ---
+                // a0 = v0 (the allocation result from the previous call to 0x3c6bd0)
+                uint32_t v0_val = getRegU32(ctx, 2);
+                // a1 = 0x65bd00 (lui 0x66 + addiu -0x4300)
+                ctx->r[5] = _mm_set_epi64x(0, 0x65bd00);
+                // a2 = 0x65bcb0 (lui 0x66 + addiu -0x4350)
+                ctx->r[6] = _mm_set_epi64x(0, 0x65bcb0);
+                // t0 = s0
+                uint32_t s0_val = getRegU32(ctx, 16);
+                ctx->r[8] = _mm_set_epi64x(0, s0_val);
+                // a0 = v0
+                ctx->r[4] = _mm_set_epi64x(0, v0_val);
+                // a3 = 0x24
+                ctx->r[7] = _mm_set_epi64x(0, 0x24);
+
+                // 0x12fe80 is already stubbed (returns a0 in v0).
+                // Since a0 = v0_val and stub returns a0, v0 stays as v0_val.
+                // We skip the actual dispatcher call and just keep v0.
+
+                // --- bb_2 logic (0x659a10) ---
+                // sw v0, 0x20(s1) — store v0 into s1+0x20
+                uint32_t s1_val = getRegU32(ctx, 17);
+                rt->memory().write32(s1_val + 0x20, v0_val);
+
+                // ld ra, 0x20(sp)
+                uint32_t sp_val = getRegU32(ctx, 29);
+                uint32_t ra_lo = rt->memory().read32(sp_val + 0x20);
+                uint32_t ra_hi = rt->memory().read32(sp_val + 0x24);
+                ctx->r[31] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(ra_lo)));
+
+                // lq s1, 0x10(sp)
+                uint32_t s1_w0 = rt->memory().read32(sp_val + 0x10);
+                uint32_t s1_w1 = rt->memory().read32(sp_val + 0x14);
+                uint32_t s1_w2 = rt->memory().read32(sp_val + 0x18);
+                uint32_t s1_w3 = rt->memory().read32(sp_val + 0x1c);
+                ctx->r[17] = _mm_set_epi32(s1_w3, s1_w2, s1_w1, s1_w0);
+
+                // lq s0, 0x0(sp)
+                uint32_t s0_w0 = rt->memory().read32(sp_val + 0x00);
+                uint32_t s0_w1 = rt->memory().read32(sp_val + 0x04);
+                uint32_t s0_w2 = rt->memory().read32(sp_val + 0x08);
+                uint32_t s0_w3 = rt->memory().read32(sp_val + 0x0c);
+                ctx->r[16] = _mm_set_epi32(s0_w3, s0_w2, s0_w1, s0_w0);
+
+                // addiu sp, sp, 0x30
+                ctx->r[29] = _mm_set_epi64x(0, sp_val + 0x30);
+
+                // jr ra
+                ctx->pc = ra_lo;
+
+                static int s_logCount = 0;
+                if (++s_logCount <= 5) {
+                    std::cerr << "[SW3] FIX 0x6599f0: inlined bb_1+bb_2, returning to pc=0x"
+                              << std::hex << ctx->pc << std::dec << std::endl;
+                }
+            };
+            runtime.registerFunction(0x6599f0, fix_6599f0);
+            std::cerr << "[SW3] OVERRIDE 0x6599f0 (re-entry fix) registered." << std::endl;
         }
         // ────────────────────────────────────────────────────
         //  FUN_0072e5d0 — Resource Manager constructor
