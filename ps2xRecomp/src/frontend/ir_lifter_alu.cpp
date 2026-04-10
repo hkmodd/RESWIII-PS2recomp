@@ -109,13 +109,13 @@ LIFT_SHIFT_CONST(SRA, IR_ASHR)
 void IRLifter::lift##Name(IRFunction& func, uint32_t blockIdx,              \
                           const GhidraInstruction& instr,                  \
                           const MIPSFields& f) {                           \
-    auto rt  = emitGPRRead(func, blockIdx, f.rt, instr.addr);                    \
-    auto sa  = emitConst64(func, blockIdx, f.sa);                                \
+    auto rt  = emitGPRRead(func, blockIdx, f.rt, instr.addr, IRType::I64); \
+    auto sa  = emitConst64(func, blockIdx, f.sa);                          \
     auto inst = makeBinaryOp(func, IROp::Op, IRType::I64, rt, sa,          \
                              instr.addr);                                  \
     ValueId vid = inst.result.id;                                          \
-    func.blocks[blockIdx].instructions.push_back(std::move(inst));                            \
-    emitGPRWrite(func, blockIdx, f.rd, vid, instr.addr);                         \
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));         \
+    emitGPRWrite(func, blockIdx, f.rd, vid, instr.addr);                   \
 }
 
 LIFT_SHIFT_CONST64(DSLL, IR_SHL)
@@ -127,13 +127,13 @@ LIFT_SHIFT_CONST64(DSRA, IR_ASHR)
 void IRLifter::lift##Name(IRFunction& func, uint32_t blockIdx,              \
                           const GhidraInstruction& instr,                  \
                           const MIPSFields& f) {                           \
-    auto rt  = emitGPRRead(func, blockIdx, f.rt, instr.addr);                    \
-    auto sa  = emitConst64(func, blockIdx, f.sa + 32);                                \
+    auto rt  = emitGPRRead(func, blockIdx, f.rt, instr.addr, IRType::I64); \
+    auto sa  = emitConst64(func, blockIdx, f.sa + 32);                     \
     auto inst = makeBinaryOp(func, IROp::Op, IRType::I64, rt, sa,          \
                              instr.addr);                                  \
     ValueId vid = inst.result.id;                                          \
-    func.blocks[blockIdx].instructions.push_back(std::move(inst));                            \
-    emitGPRWrite(func, blockIdx, f.rd, vid, instr.addr);                         \
+    func.blocks[blockIdx].instructions.push_back(std::move(inst));         \
+    emitGPRWrite(func, blockIdx, f.rd, vid, instr.addr);                   \
 }
 
 LIFT_SHIFT_CONST32(DSLL32, IR_SHL)
@@ -166,12 +166,12 @@ LIFT_SHIFT_VAR(SRAV, IR_ASHR)
 void IRLifter::lift##Name(IRFunction& func, uint32_t blockIdx,              \
                           const GhidraInstruction& instr,                  \
                           const MIPSFields& f) {                           \
-    auto rt  = emitGPRRead(func, blockIdx, f.rt, instr.addr);                    \
-    auto rs  = emitGPRRead(func, blockIdx, f.rs, instr.addr);                    \
+    auto rt  = emitGPRRead(func, blockIdx, f.rt, instr.addr, IRType::I64); \
+    auto rs  = emitGPRRead(func, blockIdx, f.rs, instr.addr, IRType::I64); \
     auto res = makeBinaryOp(func, IROp::Op, IRType::I64, rt, rs, instr.addr); \
     ValueId vid = res.result.id;                                           \
     func.blocks[blockIdx].instructions.push_back(std::move(res));          \
-    emitGPRWrite(func, blockIdx, f.rd, vid, instr.addr);                         \
+    emitGPRWrite(func, blockIdx, f.rd, vid, instr.addr);                   \
 }
 
 LIFT_SHIFT_VAR64(DSLLV, IR_SHL)
