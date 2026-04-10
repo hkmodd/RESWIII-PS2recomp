@@ -231,7 +231,7 @@ void SignalSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         return;
     }
 
-    int ret = KE_OK;
+    int ret = sid; // EE kernel returns semaID on success
     int beforeCount = 0;
     int afterCount = 0;
     {
@@ -251,7 +251,7 @@ void SignalSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 
     static std::atomic<uint32_t> s_signalSemaLogs{0};
     const uint32_t sigLog = s_signalSemaLogs.fetch_add(1, std::memory_order_relaxed);
-    if (sigLog < 5u) // Changed to 5u to avoid console stall on 50000 wait/signal loops
+    if (sigLog < 5u)
     {
         // std::cout << "[SignalSema] tid=" << g_currentThreadId
         //           << " sid=" << sid
@@ -300,7 +300,7 @@ void WaitSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
                     *serverPtrAddr = 1;
                 }
             }
-            setReturnS32(ctx, KE_OK);
+            setReturnS32(ctx, sid); // EE kernel returns semaID on success
             return;
         }
     }
@@ -308,7 +308,7 @@ void WaitSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     auto info = ensureCurrentThreadInfo(ctx);
     throwIfTerminated(info);
     std::unique_lock<std::mutex> lock(sema->m);
-    int ret = 0;
+    int ret = sid; // EE kernel returns semaID on success
 
     if (sema->count == 0)
     {
@@ -368,7 +368,7 @@ void WaitSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         }
     }
 
-    if (ret == 0 && sema->count > 0)
+    if (ret == sid && sema->count > 0)
     {
         sema->count--;
     }
@@ -412,7 +412,7 @@ void PollSema(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     if (sema->count > 0)
     {
         sema->count--;
-        setReturnS32(ctx, KE_OK);
+        setReturnS32(ctx, sid); // EE kernel returns semaID on success
         return;
     }
 
