@@ -661,6 +661,98 @@ namespace
                     std::cerr << "[CDVD:Read] sendBuf=0x" << std::hex << sendBuf << std::dec << std::endl;
                     if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 0);
                 }
+                else if (rpcNum == 0xfe) { // sceCdStStat — streaming status check
+                    // Return 0 = streaming complete / idle (no data pending)
+                    std::cerr << "[CDVD:StStat] Returning complete" << std::endl;
+                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 0);
+                }
+                else if (rpcNum == 0xff) { // sceCdStStart — start streaming read
+                    // sendBuf layout (from log):
+                    //   [0..3] = param struct address (e.g. 0x001b4340)
+                    //   [4..7] = result struct address (e.g. 0x001b4780)
+                    uint32_t paramAddr  = sendBuf ? runtimePtr->memory().read32(sendBuf + 0) : 0;
+                    uint32_t resultAddr = sendBuf ? runtimePtr->memory().read32(sendBuf + 4) : 0;
+
+                    // The param struct at paramAddr has the stream params:
+                    //   +0x00 = LSN (logical sector number to start reading from)
+                    //   +0x04 = num_sectors
+                    //   +0x08 = dest_buffer (EE address)
+                    //   +0x0C = mode / flags
+                    uint32_t lsn = paramAddr ? runtimePtr->memory().read32(paramAddr + 0) : 0;
+                    uint32_t numSectors = paramAddr ? runtimePtr->memory().read32(paramAddr + 4) : 0;
+                    uint32_t destBuf = paramAddr ? runtimePtr->memory().read32(paramAddr + 8) : 0;
+
+                    std::cerr << "[CDVD:StStart] paramAddr=0x" << std::hex << paramAddr
+                              << " resultAddr=0x" << resultAddr
+                              << " LSN=" << std::dec << lsn
+                              << " sectors=" << numSectors
+                              << " dest=0x" << std::hex << destBuf << std::dec << std::endl;
+
+                    // Resolve file from last SearchFile or by LBA
+                    CdFileEntry* entry = findFileByLba(lsn);
+                    if (!entry && s_lastSearchedFile) {
+                        entry = s_lastSearchedFile;
+                        std::cerr << "[CDVD:StStart] No LBA match, using lastSearched: " 
+                                  << entry->hostPath << std::endl;
+                    }
+
+                    if (entry && destBuf != 0) {
+                        FILE* f = fopen(entry->hostPath.c_str(), "rb");
+                        if (f) {
+                            // Calculate file offset from LSN difference
+                            uint32_t offsetSectors = 0;
+                            if (lsn >= entry->fakeLba) {
+                                offsetSectors = lsn - entry->fakeLba;
+                            }
+                            uint32_t fileOffset = offsetSectors * 2048;
+                            fseek(f, fileOffset, SEEK_SET);
+
+                            // Calculate read size
+                            uint32_t readSize = (numSectors > 0) ? (numSectors * 2048) : entry->size;
+                            if (readSize > entry->size) readSize = entry->size;
+
+                            // Read in chunks to avoid huge allocations
+                            const uint32_t CHUNK = 65536;
+                            uint32_t totalRead = 0;
+                            std::vector<uint8_t> chunk(CHUNK);
+                            while (totalRead < readSize) {
+                                uint32_t toRead = std::min(CHUNK, readSize - totalRead);
+                                size_t got = fread(chunk.data(), 1, toRead, f);
+                                if (got == 0) break;
+                                for (size_t i = 0; i < got; i++) {
+                                    runtimePtr->memory().write8(destBuf + totalRead + (uint32_t)i, chunk[i]);
+                                }
+                                totalRead += (uint32_t)got;
+                            }
+                            fclose(f);
+
+                            std::cerr << "[CDVD:StStart] Read " << totalRead << "/" << readSize
+                                      << " bytes from " << entry->hostPath
+                                      << " (offset=" << fileOffset << ")" << std::endl;
+
+                            // Preview first 32 bytes
+                            std::cerr << "[CDVD:StStart] Preview: ";
+                            for (uint32_t i = 0; i < 32 && i < totalRead; i++) {
+                                uint8_t b = runtimePtr->memory().read8(destBuf + i);
+                                std::cerr << std::hex << std::setw(2) << std::setfill('0') << (int)b << " ";
+                            }
+                            std::cerr << std::dec << std::endl;
+                        } else {
+                            std::cerr << "[CDVD:StStart] ERROR: Cannot open " << entry->hostPath << std::endl;
+                        }
+                    } else if (!entry) {
+                        std::cerr << "[CDVD:StStart] ERROR: No file for LSN=" << lsn << std::endl;
+                    } else {
+                        // destBuf=0 means init-only (no actual read yet)
+                        std::cerr << "[CDVD:StStart] Init-only (destBuf=0)" << std::endl;
+                    }
+
+                    // Set completion flags
+                    runtimePtr->memory().write32(0x1304b4, 0); // streaming not busy
+                    runtimePtr->memory().write32(0x1304d8, 0); // streaming not pending
+
+                    if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 0);
+                }
                 else {
                     std::cerr << "[CDVD:RPC] rpcNum=0x" << std::hex << rpcNum << std::dec << std::endl;
                     if (recvBuf && recvSize >= 4) runtimePtr->memory().write32(recvBuf, 0);
