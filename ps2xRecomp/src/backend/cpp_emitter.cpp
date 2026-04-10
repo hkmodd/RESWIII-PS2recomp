@@ -211,17 +211,16 @@ void CppEmitter::emitInstruction(std::ostringstream& out, const IRInst& inst) {
             out << getValueName(inst.operands[0]) << " >> " << getValueName(inst.operands[1]);
             break;
         case IROp::IR_SRA:
-            // Cast to signed to ensure arithmetic shift
-            out << "((int32_t)" << getValueName(inst.operands[0]) << ") >> " << getValueName(inst.operands[1]);
+        case IROp::IR_ASHR: {
+            std::string t = (inst.result.type == IRType::I64) ? "int64_t" : "int32_t";
+            out << "((" << t << ")" << getValueName(inst.operands[0]) << ") >> " << getValueName(inst.operands[1]);
             break;
+        }
         case IROp::IR_SHL:
             out << getValueName(inst.operands[0]) << " << " << getValueName(inst.operands[1]);
             break;
         case IROp::IR_LSHR:
             out << getValueName(inst.operands[0]) << " >> " << getValueName(inst.operands[1]);
-            break;
-        case IROp::IR_ASHR:
-            out << "((int32_t)" << getValueName(inst.operands[0]) << ") >> " << getValueName(inst.operands[1]);
             break;
         case IROp::IR_MUL:
             out << getValueName(inst.operands[0]) << " * " << getValueName(inst.operands[1]);

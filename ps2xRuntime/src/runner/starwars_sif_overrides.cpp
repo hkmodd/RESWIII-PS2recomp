@@ -378,9 +378,55 @@ namespace
 
                 setReturnS32(ctx, 1); // 1 = found
             } else {
-                std::cerr << "[CDVD:SearchFile] NOT FOUND: " << key << std::endl;
-                s_lastSearchedFile = nullptr;
-                setReturnS32(ctx, 0); // 0 = not found
+                // Prefix-match fallback: game may search with truncated names
+                // (e.g. "\ENGINE\LEGA" instead of "\ENGINE\LEGALENG.PSI")
+                CdFileEntry* prefixMatch = nullptr;
+                std::string prefixMatchKey;
+                for (auto& [k, v] : s_cdFileTable) {
+                    if (k.size() > key.size() && k.substr(0, key.size()) == key) {
+                        // Prefer ENG variant as default language
+                        if (k.find("ENG") != std::string::npos) {
+                            prefixMatch = &v;
+                            prefixMatchKey = k;
+                            break; // ENG is our preferred fallback
+                        }
+                        if (!prefixMatch) {
+                            prefixMatch = &v;
+                            prefixMatchKey = k;
+                        }
+                    }
+                }
+
+                if (prefixMatch) {
+                    std::cerr << "[CDVD:SearchFile] PREFIX MATCH: \"" << key
+                              << "\" -> \"" << prefixMatchKey << "\"" << std::endl;
+                    CdFileEntry& entry = *prefixMatch;
+                    s_lastSearchedFile = &entry;
+
+                    runtimePtr->memory().write32(resultAddr + 0, entry.fakeLba);
+                    runtimePtr->memory().write32(resultAddr + 4, entry.size);
+                    for (int i = 0; i < 16; i++) {
+                        uint8_t c = (i < (int)prefixMatchKey.size()) ? (uint8_t)prefixMatchKey[i] : 0;
+                        runtimePtr->memory().write8(resultAddr + 8 + i, c);
+                    }
+                    for (int i = 0; i < 8; i++) {
+                        runtimePtr->memory().write8(resultAddr + 24 + i, 0);
+                    }
+
+                    uint32_t semaId = runtimePtr->memory().read32(0x1304a8);
+                    if (semaId != 0) {
+                        __m128i old_a0 = ctx->r[4];
+                        ctx->r[4] = _mm_set_epi64x(0, static_cast<int64_t>(static_cast<int32_t>(semaId)));
+                        ps2_syscalls::iSignalSema(rdram, ctx, runtimePtr);
+                        ctx->r[4] = old_a0;
+                    }
+
+                    setReturnS32(ctx, 1); // 1 = found via prefix
+                } else {
+                    std::cerr << "[CDVD:SearchFile] NOT FOUND: " << key << std::endl;
+                    s_lastSearchedFile = nullptr;
+                    setReturnS32(ctx, 0); // 0 = not found
+                }
             }
 
             ctx->pc = getRegU32(ctx, 31);
