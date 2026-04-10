@@ -591,10 +591,13 @@ namespace
             // t_SifRpcClientData has rpc_id at offset 4
             uint32_t sid = runtimePtr->memory().read32(clientPtr + 4);
 
-            // Log ALL SifCallRpc calls for diagnostics
+            // Log SifCallRpc calls (throttled to first 20)
             uint32_t sp = getRegU32(ctx, 29);
             uint32_t recvBuf  = runtimePtr->memory().read32(sp + 0x14);
             uint32_t recvSize = runtimePtr->memory().read32(sp + 0x18);
+            static uint32_t s_sifCallRpcLogCount = 0;
+            s_sifCallRpcLogCount++;
+            if (s_sifCallRpcLogCount <= 20) {
             std::cerr << "[SifCallRpc Override] client=0x" << std::hex << clientPtr
                       << " sid=0x" << sid
                       << " rpcNum=0x" << rpcNum
@@ -624,6 +627,55 @@ namespace
             char* defaultDev = (char*)(rdram + 0x92a690);
             if (defaultDev) {
                 std::cerr << "[SifCallRpc Override] Default VFS device: \"" << defaultDev << "\"\n";
+            }
+            } // end throttle if
+
+            // ─── CDVD Streaming client (0x1b0ed0) ───
+            // Bound to SID=0x8000059c by FUN_00101668.
+            // rpcNum=0: "init/query" — the game reads *(recvBuf) via uncached KSEG1
+            //   and expects value 2 to mean "streaming ready". The caller
+            //   loops: do { r = FUN_00101668(0); } while (r != 2);
+            //   FUN_00101668 returns *(0x20131f00) which is the recvBuf content.
+            if (clientPtr == 0x1b0ed0) {
+                // Read actual recvBuf/recvSize from registers (SN Systems ABI: t0-t3 for args 5-8)
+                uint32_t actualRecvBuf  = getRegU32(ctx, 9);  // t1 = recvBuf
+                uint32_t actualRecvSize = getRegU32(ctx, 10); // t2 = recvSize
+
+                static uint32_t s_cdvdStreamingCallCount = 0;
+                s_cdvdStreamingCallCount++;
+                if (s_cdvdStreamingCallCount <= 3) {
+                    std::cerr << "[CDVD:Streaming] client=0x" << std::hex << clientPtr
+                              << " rpcNum=0x" << rpcNum
+                              << " recvBuf=0x" << actualRecvBuf
+                              << " recvSize=0x" << actualRecvSize
+                              << std::dec << " (call #" << s_cdvdStreamingCallCount << ")"
+                              << std::endl;
+                }
+
+                if (rpcNum == 0x0) {
+                    // Write "2" = streaming ready/complete to recvBuf
+                    if (actualRecvBuf && actualRecvSize >= 4) {
+                        runtimePtr->memory().write32(actualRecvBuf, 2);
+                    }
+                    // Also write to the known hardcoded address as fallback
+                    runtimePtr->memory().write32(0x131f00, 2);
+                } else {
+                    // Other rpcNums on this client — return 0 (success)
+                    if (actualRecvBuf && actualRecvSize >= 4) {
+                        runtimePtr->memory().write32(actualRecvBuf, 0);
+                    }
+                }
+
+                // Signal the CDVD streaming semaphore (DAT_001304b0)
+                __m128i old_a0 = ctx->r[4];
+                uint32_t semaId = runtimePtr->memory().read32(0x1304b0);
+                ctx->r[4] = _mm_set_epi64x(0, (long long)semaId);
+                ps2_syscalls::iSignalSema(rdram, ctx, runtimePtr);
+                ctx->r[4] = old_a0;
+
+                setReturnS32(ctx, 0); // sceSifCallRpc returns 0 (success)
+                ctx->pc = getRegU32(ctx, 31);
+                return;
             }
 
             // Check if this is the cdvdman client
