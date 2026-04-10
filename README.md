@@ -6,6 +6,10 @@
 
 > [!IMPORTANT]
 > WIP!!! Nothing works for now!
+> EDIT: 10/04/2026 hehehe
+
+<img width="1105" height="616" alt="image" src="https://github.com/user-attachments/assets/3c99c09b-4bc2-40ff-bb2c-874053b1e512" />
+
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/JQ8mawxUEf)
 
