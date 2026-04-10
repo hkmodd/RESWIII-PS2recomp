@@ -171,6 +171,8 @@ namespace
             } else if (strstr(filename, "_1.PK2") || strstr(filename, "_1.pk2") || strstr(filename, "_1.Pk2")) {
                 hostPath += "PS2PAK_1.pk2";
             } else if (strstr(filename, "PS2P")) {
+                // IMPORTANT: The game searches for the huge PK2 size in SearchFile, 
+                // but then opens the 'PS2P' path specifically to load the 68KB .HSH index!
                 hostPath += "PS2PAK.HSH";
             } else {
                 const char* base = strrchr(filename, '\\');
@@ -345,29 +347,38 @@ namespace
             std::cerr << "[CDVD:SearchFile] Looking up: \"" << key << "\" (caller RA: 0x" << std::hex << ra << std::dec << ")" << std::endl;
 
             auto it = s_cdFileTable.find(key);
+            
+            // Helpful diagnostics to see exactly what bytes the game is pushing
+            std::cerr << "          Raw bytes at a1: ";
+            for(int i=0; i<16; i++) {
+                std::cerr << std::hex << std::setw(2) << std::setfill('0') << (int)rdram[filenameAddr + i] << " ";
+            }
+            std::cerr << std::dec << std::endl;
+
             if (it != s_cdFileTable.end()) {
                 CdFileEntry& entry = it->second;
                 s_lastSearchedFile = &entry;
 
-                // Write sceCdlFILE struct to result
-                // Offset 0: LSN (uint32)
+                // Extract base name for CdlFILE.name (should not include '\ENGINE\')
+                std::string baseName = key;
+                size_t slash = baseName.find_last_of("\\/:");
+                if (slash != std::string::npos) baseName = baseName.substr(slash + 1);
+                if (baseName.find(';') == std::string::npos) baseName += ";1";
+
                 runtimePtr->memory().write32(resultAddr + 0, entry.fakeLba);
-                // Offset 4: file size (uint32)
                 runtimePtr->memory().write32(resultAddr + 4, entry.size);
-                // Offset 8-23: filename (16 bytes, zero-padded)
                 for (int i = 0; i < 16; i++) {
-                    uint8_t c = (i < (int)key.size()) ? (uint8_t)key[i] : 0;
+                    uint8_t c = (i < (int)baseName.size()) ? (uint8_t)baseName[i] : 0;
                     runtimePtr->memory().write8(resultAddr + 8 + i, c);
                 }
-                // Offset 24-31: date (8 bytes, zeroed)
                 for (int i = 0; i < 8; i++) {
                     runtimePtr->memory().write8(resultAddr + 24 + i, 0);
                 }
 
                 std::cerr << "[CDVD:SearchFile] FOUND: LBA=" << entry.fakeLba
-                          << " size=" << entry.size << " path=" << entry.hostPath << std::endl;
+                          << " size=" << entry.size << " path=" << entry.hostPath 
+                          << " (Reported basename: " << baseName << ")" << std::endl;
 
-                // Signal the CDVD semaphore (DAT_001304a8, value at 0x1304a8)
                 uint32_t semaId = runtimePtr->memory().read32(0x1304a8);
                 if (semaId != 0) {
                     __m128i old_a0 = ctx->r[4];
@@ -376,19 +387,23 @@ namespace
                     ctx->r[4] = old_a0;
                 }
 
-                setReturnS32(ctx, 1); // 1 = found
+                setReturnS32(ctx, 1);
             } else {
-                // Prefix-match fallback: game may search with truncated names
-                // (e.g. "\ENGINE\LEGA" instead of "\ENGINE\LEGALENG.PSI")
                 CdFileEntry* prefixMatch = nullptr;
                 std::string prefixMatchKey;
                 for (auto& [k, v] : s_cdFileTable) {
                     if (k.size() > key.size() && k.substr(0, key.size()) == key) {
-                        // Prefer ENG variant as default language
-                        if (k.find("ENG") != std::string::npos) {
+                        // Hard-force priority to PS2PAK_0.PK2 if the truncated string starts with PS2P
+                        if (k.find("PS2PAK_0.PK2") != std::string::npos && key == "\\ENGINE\\PS2P") {
                             prefixMatch = &v;
                             prefixMatchKey = k;
-                            break; // ENG is our preferred fallback
+                            break;
+                        }
+                        // Only prefer ENG files if they specifically have ENG in the filename (avoid \ENGINE\)
+                        if (k.find("ENG.") != std::string::npos) {
+                            prefixMatch = &v;
+                            prefixMatchKey = k;
+                            break;
                         }
                         if (!prefixMatch) {
                             prefixMatch = &v;
@@ -403,15 +418,23 @@ namespace
                     CdFileEntry& entry = *prefixMatch;
                     s_lastSearchedFile = &entry;
 
+                    // Extract base name correctly for fallback match
+                    std::string baseName = prefixMatchKey;
+                    size_t slash = baseName.find_last_of("\\/:");
+                    if (slash != std::string::npos) baseName = baseName.substr(slash + 1);
+                    if (baseName.find(';') == std::string::npos) baseName += ";1";
+
                     runtimePtr->memory().write32(resultAddr + 0, entry.fakeLba);
                     runtimePtr->memory().write32(resultAddr + 4, entry.size);
                     for (int i = 0; i < 16; i++) {
-                        uint8_t c = (i < (int)prefixMatchKey.size()) ? (uint8_t)prefixMatchKey[i] : 0;
+                        uint8_t c = (i < (int)baseName.size()) ? (uint8_t)baseName[i] : 0;
                         runtimePtr->memory().write8(resultAddr + 8 + i, c);
                     }
                     for (int i = 0; i < 8; i++) {
                         runtimePtr->memory().write8(resultAddr + 24 + i, 0);
                     }
+                    
+                    std::cerr << "                  Reported basename: " << baseName << std::endl;
 
                     uint32_t semaId = runtimePtr->memory().read32(0x1304a8);
                     if (semaId != 0) {
@@ -421,11 +444,11 @@ namespace
                         ctx->r[4] = old_a0;
                     }
 
-                    setReturnS32(ctx, 1); // 1 = found via prefix
+                    setReturnS32(ctx, 1);
                 } else {
                     std::cerr << "[CDVD:SearchFile] NOT FOUND: " << key << std::endl;
                     s_lastSearchedFile = nullptr;
-                    setReturnS32(ctx, 0); // 0 = not found
+                    setReturnS32(ctx, 0);
                 }
             }
 
